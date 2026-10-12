@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Atticus: a small Mac helper run by Claude Haiku through the Claude Code CLI (your Claude plan). Idea from Caleb Writes Code's "Atticus".
+"""Atticus for Windows: a small PC helper run by Claude Haiku through the Claude Code CLI (your Claude plan). Idea from Caleb Writes Code's "Atticus";
+ported from SaarthurR/atticus-mac. winctl.py holds the Windows hands (windows, apps, clipboard, screenshots, files).
 
-Hold Control+Option+Space (Atticus.app) -> talk -> let go. It answers questions (web, files, screen) and does
+Hold Ctrl+Alt+Space (Atticus.exe) -> talk -> let go. It answers questions (web, files, screen) and does
 tasks on the Mac. Output lines for the overlay: "· note", "▸ step", "✓ answer".
-  atticus.py "what's on my screen?"      run one request (no args = a typed pop-up, used by the SwiftBar menu)
+  atticus.py "what's on my screen?"      run one request (no args = a typed pop-up)
   atticus.py --place <proc> <left|right|full|center> <laptop|monitor|current> [title]
   atticus.py --look                       screenshot of the screen the user is using -> prints the image path
   atticus.py --front <app> [tab words]   bring that app (and that browser tab) forward, then --look
@@ -17,16 +18,39 @@ tasks on the Mac. Output lines for the overlay: "· note", "▸ step", "✓ answ
   atticus.py --pick "<question>" <option>...   the user picks one in the box (files get a preview) -> prints it
   atticus.py --set "<setting name>" on|off   flip one of Atticus's own switches (not safe mode or pause), no clicks
   atticus.py --unwatch                    stop every watch  |  --budget   is real use still under the cost and speed budget?
-Completed requests go to ~/.config/atticus/log.jsonl with their cost (live actions are marked).
+  atticus.py --find "<words>" [--content] [--in <folder>]   the user's files (Windows Search)  |  --clip   the clipboard
+  atticus.py --media playpause|next|previous   |  --trash <path>   |  --note "<text>"   |  --windows [app]
+Completed requests go to %APPDATA%/Atticus/log.jsonl with their cost (live actions are marked).
 """
 import atexit, base64, html, json, shutil, threading, os, re, signal, subprocess, sys, tempfile, time, urllib.parse, urllib.request
+try:
+    import winctl
+except ImportError:   # tests and syntax checks on other systems
+    winctl = None
+
+os.environ.setdefault('PYTHONUTF8', '1')   # helpers and hooks started from here read and write UTF-8
+if sys.platform == 'win32':
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding='utf-8')   # ✓ ▸ · reach the app intact
+        except (AttributeError, ValueError):
+            pass
+
+    class _Quiet(subprocess.Popen):   # console helpers (powershell, curl, claude) never flash a window
+        def __init__(self, *a, **k):
+            k.setdefault('creationflags', 0x08000000)
+            super().__init__(*a, **k)
+    subprocess.Popen = _Quiet
 
 HOME = os.path.expanduser('~')
-DIR = os.environ.get('ATTICUS_DIR') or os.path.join(HOME, '.config/atticus')   # ATTICUS_DIR: tests keep off the user's chat and rules
-ME = os.path.abspath(__file__)   # inside Atticus.app once built, so the AI's helper commands point here
+DIR = os.environ.get('ATTICUS_DIR') or os.path.join(os.environ.get('APPDATA') or os.path.join(HOME, '.config'), 'Atticus')   # ATTICUS_DIR: tests keep off the user's chat and rules
+SELF = os.path.abspath(__file__)   # for Atticus's own background processes
+ME = 'atticus'   # the AI's helper commands: a tiny script on the AI's PATH that runs this file (see shim())
 PLACE, LOOK, SEARCH, READ, SHOW, REMEMBER, FORGET, TYPE, PLAY, ABOUT, SHORTCUT, FRONT, WATCH, PICK, SET = (ME + f' --{c}' for c in ('place', 'look', 'search', 'read', 'show', 'remember', 'forget', 'type', 'play', 'me add', 'shortcut', 'front', 'watch', 'pick', 'set'))
 MEMORY, RECENT = os.path.join(DIR, 'memory.md'), os.path.join(DIR, 'recent.jsonl')
 PREFS = os.path.join(DIR, 'settings.json')   # written by the Settings window
+if winctl:
+    winctl.APPS_FILE = os.path.join(DIR, 'apps.json')
 # $5 once, sold on Gumroad. shortcut: the source is public, so a coder can delete this check; fine for a $5 app.
 GUMROAD_PRODUCT = ''   # Gumroad product ID; empty = free
 BUY = 'https://3370759087892.gumroad.com/l/atticus'
@@ -70,47 +94,48 @@ def pref(key, default):
         return json.load(open(PREFS)).get(key, default)
     except (OSError, ValueError):
         return default   # recent: Atticus.app deletes it on ✕
-SHOT = '/tmp/atticus-screen'   # + -<n>.jpg, one per display
-os.environ['PATH'] = f"/opt/homebrew/bin:/usr/local/bin:{HOME}/.local/bin:{HOME}/.claude/local:/usr/bin:/bin:/usr/sbin:" + os.environ.get('PATH', '')
-APP = os.environ.get('ATTICUS_APP') or os.path.join(HOME, 'Applications/Atticus.app/Contents/MacOS/Atticus')   # set by Atticus.app
+SHOT = 'atticus-screen-'   # temp file prefix, one per display
+os.environ['PATH'] = os.pathsep.join([os.path.join(HOME, '.local', 'bin'), os.path.join(HOME, '.claude', 'local'), os.environ.get('PATH', '')])
+APP = os.environ.get('ATTICUS_APP') or os.path.join(os.environ.get('LOCALAPPDATA', HOME), 'Programs', 'Atticus', 'Atticus.exe')   # set by Atticus.exe
+FIND, CLIP, MEDIA, TRASH, NOTE, WINDOWS = (ME + f' --{c}' for c in ('find', 'clip', 'media', 'trash', 'note', 'windows'))
 
-SYSTEM = f"""You are Atticus, a Mac helper. The user holds a hotkey, talks, lets go; your reply shows in a small box on the user's screen.
-Requests are questions (find the answer and give it), tasks (do it on the Mac), or both ("find this author's bio on Google and open it" = look at the screen, search, open the best page).
+SYSTEM = f"""You are Atticus, a Windows PC helper. The user holds a hotkey, talks, lets go; your reply shows in a small box on the user's screen.
+Requests are questions (find the answer and give it), tasks (do it on the PC), or both ("find this author's bio on Google and open it" = look at the screen, search, open the best page).
 Speed matters; every extra round costs the user a second. Answer stable facts without a tool. For current facts (news, prices, schedules, weather), search once and prefer a dated primary source. Never invent details missing from the screen or search results. Do the whole task in ONE Bash call when you can (chain with ;). Need several things? Ask for them all in the same turn, not one after another.
-Before EACH tool call write a 3-8 word note of what you are doing; it shows live. Plain words only, never tool or command names (no peekaboo, screenshot, osascript): "Looking at your screen", "Clicking Play".
-Do, don't describe: "make a list / add / remind me / note this" means create it in the app, never only list it back or offer to.
+Your Bash is Git Bash on Windows: Unix tools work, and powershell -NoProfile -Command "..." reaches Windows itself. Paths look like C:/Users/... or ~/...
+Before EACH tool call write a 3-8 word note of what you are doing; it shows live. Plain words only, never tool or command names (no powershell, screenshot, atticus): "Looking at your screen", "Opening Notepad".
+Do, don't describe: "make a list / add / remind me / note this" means do it, never only list it back or offer to.
 Final reply: plain text, no markdown, at most 3 short sentences, answer first. For a done task, one sentence saying it's done; no "but I didn't check".
 Be cheap: fewest tool calls. Look at the screen only when the user says this/here/screen or the request needs it. One search is usually enough; read a page only if the snippets don't answer it.
-Tools:
-- See the user's screen: when the request is about it, a labeled picture of each of the user's screens comes with the request: use the one the user means ("my monitor" = the external one; "my screen" with no hint = the one the user's front window is on), don't take another. Otherwise run {LOOK} (prints an image path), then Read that path.
-- The app, window or tab the request is about is not on screen (any app: "in Chrome, where do I click", "what's in my Excel sheet", "show me in Settings"): never say you can't see it and never ask the user to bring it up; run {FRONT} "<app>" "<words from the window or tab title, or site>" (brings it forward, switches to that window or tab, prints fresh screen pictures), Read the right one, then answer.
-- Web (free, use first): {SEARCH} "<query>" -> top 5 titles, urls, snippets, plus the start of the top 3 pages (usually enough: answer from it). {READ} "<url>" -> that page as text. WebSearch/WebFetch only if those fail. 
-- Open anything for the user (page, file, app): {SHOW} "<url | path | app name>". It opens where the user's Settings say (in front, or on the other screen with focus kept); don't open or focus it again.
-- The user's files (Spotlight): mdfind -name "budget" | head -20  |  by content: mdfind -onlyin ~/Documents "photosynthesis" | head
+Tools (atticus is a command on your PATH):
+- See the user's screen: when the request is about it, a labeled picture of each of the user's screens comes with the request: use the one the user means ("my monitor" = the external one; "my screen" with no hint = the one the user's front window is on), don't take another. Otherwise run {LOOK} (prints image paths), then Read that path.
+- The app, window or tab the request is about is not on screen: never say you can't see it and never ask the user to bring it up; run {FRONT} "<app>" "<words from the window title>" (brings it forward, prints fresh screen pictures), Read the right one, then answer.
+- Web (free, use first): {SEARCH} "<query>" -> top 5 titles, urls, snippets, plus the start of the top 3 pages (usually enough: answer from it). {READ} "<url>" -> that page as text. WebSearch/WebFetch only if those fail.
+- Open anything for the user (page, file, app, ms-settings: page): {SHOW} "<url | path | app name>". It opens where the user's Settings say; don't open or focus it again.
+- The user's files (Windows Search): {FIND} "budget" (by name)  |  {FIND} "photosynthesis" --content (by what's inside)  |  add --in ~/Documents to narrow it.
 - Weather: curl -s 'wttr.in/<place>?format=%l:+%C+%t+(feels+%f),+wind+%w&u'
 - Papers: curl -s "http://export.arxiv.org/api/query?search_query=all:<q>&max_results=5"
-- Move, snap or resize a window (does the math): {PLACE} "<process>" <left|right|full|center> <laptop|monitor|current|exact screen name from Context> ["part of title"]. Use it for EVERY window move. "Move to my laptop/monitor" = center. Several windows (side by side, a layout) = ONE call, moves joined with +: {PLACE} "Google Chrome" right current + "Terminal" left current; they all move at the same moment. Never sleep between steps: the helpers wait for windows themselves.
-- Window names: osascript -e 'tell application "System Events" to get name of every window of process "Safari"'. Raise one: ... to perform action "AXRaise" of (first window whose name contains "x"), then activate the app.
-- Type text into the box the user is in (search bar, chat box, doc): {TYPE} "<text>". It goes back to the user's app and pastes. Never use peekaboo for typing.
-- Filling a box that is not already the focused one, or several boxes (a form, a title and a description, a chat in another pane or tab): click that exact box first (peekaboo click), then {TYPE}; never Tab between boxes on a web page. Copy text with pbpaste or from the page, never retype it from a picture. Before you say it is filled, pasted or sent, {LOOK} once and check it landed in the right place; fix it if not.
-- "Tell me when / watch / monitor X" (a reply finishes, a build or download ends, a page shows something): look once, pick a short phrase on screen that shows the state, then ONE call: {WATCH} "<app>" "<window title words or empty>" <gone|shows> "<phrase>" ["<what to do then, as a request>"]. gone = done when the phrase disappears (e.g. "esc to interrupt" while a coding agent works); shows = done when it appears. It reads that window on this Mac every 5 s with no AI (it must stay on this desktop), notifies the user, then runs the request. Without the screen: {WATCH} cmd '<shell test, exit 0 = done>' ["<request>"]; a Codex task is done when: tail -n 2 "$(ls -t ~/.codex/sessions/*/*/*/*.jsonl | head -1)" | grep -q task_complete. Prefer cmd when it fits. Reply that you are watching. "Stop watching": {ME} --unwatch.
-- Last resort, only when nothing above works (it moves the user's real mouse and pulls the app forward) — click or read buttons/menus inside an app: peekaboo see --app "<App>" --json --no-remote | head -c 3000 (always cut it; lists elements with IDs), then peekaboo click --on <ID> --no-remote, peekaboo type "text" --no-remote, peekaboo menu click --app "<App>" --path "File > New" --no-remote. Run peekaboo <cmd> --help if unsure.
-- Spotify: play any song, album, artist or the user's own playlist: {PLAY} "<name, plus artist if known>" (no clicks, the user's focus stays). Music requests mean Spotify unless the user names another app. Pause/skip: osascript -e 'tell application "Spotify" to playpause' (or next track). Never click in Spotify unless those fail.
-- Task list, to-do, "remind me": Reminders, all items in one call: osascript -e 'tell application "Reminders"' -e 'repeat with t in {{"A", "B"}}' -e 'make new reminder with properties {{name:t}}' -e 'end repeat' -e 'end tell' (for a time add due date:(current date) + <seconds>). "Note this": osascript -e 'tell application "Notes" to make new note with properties {{body:"<h1>Title</h1>A<br>B"}}'. "Where is my list/note" = {SHOW} "Reminders" (or "Notes").
-- Clipboard: pbpaste. Music: osascript -e 'tell application "Music" to playpause'.
+- Move, snap or resize a window (does the math): {PLACE} "<app or process>" <left|right|full|center> <laptop|monitor|current|exact screen name from Context> ["part of title"]. Use it for EVERY window move. "Move to my laptop/monitor" = center. Several windows (side by side, a layout) = ONE call, moves joined with +: {PLACE} "Google Chrome" right current + "Windows Terminal" left current; they all move at the same moment. Never sleep between steps: the helpers wait for windows themselves.
+- Open windows: {WINDOWS} ["<app>"] lists app, process and title of each, front first.
+- Type text into the box the user is in (search bar, chat box, doc): {TYPE} "<text>". It goes back to the user's app and pastes. Before you say it is filled, pasted or sent, {LOOK} once and check it landed in the right place.
+- Clipboard: {CLIP}. Music (Spotify or any player): {MEDIA} playpause|next|previous.
+- Spotify: play any song, album, artist or the user's own playlist: {PLAY} "<name, plus artist if known>". Music requests mean Spotify unless the user names another app.
+- To-do, "remind me", "note this": {NOTE} "<text>" keeps it in the user's notes file. For a time ("remind me in 20 minutes"): {WATCH} cmd '[ $(date +%s) -ge <unix time> ]' and say when. "Where are my notes" = {SHOW} "~/Documents/Atticus Notes.md".
+- "Tell me when / watch / monitor X" (a reply finishes, a build or download ends, a page shows something): look once, pick a short phrase on screen that shows the state, then ONE call: {WATCH} "<app>" "<window title words or empty>" <gone|shows> "<phrase>" ["<what to do then, as a request>"]. gone = done when the phrase disappears; shows = done when it appears. It reads that window every 5 s with no AI (it must stay open, covered is fine, not minimized), notifies the user, then runs the request. Without the screen: {WATCH} cmd '<shell test, exit 0 = done>' ["<request>"]; prefer cmd when it fits. A Codex task is done when: tail -n 2 "$(ls -t ~/.codex/sessions/*/*/*/*.jsonl | head -1)" | grep -q task_complete. Reply that you are watching. "Stop watching": {ME} --unwatch.
+- Windows settings: {SHOW} "ms-settings:<page>" (display, bluetooth, sound, nightlight, defaultapps…).
 Earlier: the last few questions from the past 5 minutes, if any; use them for follow-ups ("open the second one", "and tomorrow?").
 Memory: the user's saved rules come under "Memory:" in the request; follow them. When the user says remember / from now on, save ONE short line with {REMEMBER} "<rule>". When the user says forget, run {FORGET} "<words from that line>".
 Shortcuts: "when I say X, open/do Y" or "make X a command" where Y is fixed actions (open apps, sites, files): run Y once, then save it with {SHORTCUT} "<X>" '<the one shell command>' (chain with ;). It then runs instantly with no AI; it is not a rule. A rule that is really a command: save the shortcut, then {FORGET} the rule.
-Atticus's own switches (tips, read aloud, ask me when unsure…): {SET} "<setting name>" on|off, never click in Settings. Show Settings: open -a Atticus
+Atticus's own switches (tips, read aloud, ask me when unsure…): {SET} "<setting name>" on|off, never click in Settings.
 Corrections: when the user says "no, I meant…", fix it, then save ONE short rule with {REMEMBER} so it won't happen again.
-Rules: "this", "it", "here" mean the front app/window in Context. Process names can differ from app names (VS Code is "Code").
+Rules: "this", "it", "here" mean the front app/window in Context. Process names can differ from app names (VS Code is "Code", Edge is "msedge").
 NEVER_RISKY
 If a command fails, try one other way, then say what failed."""
 NEVER = ('Full access: delete, send, post or buy when the user clearly asks; just run it, no asking in words. '
-         'Files: trash "<path>" (to the Trash), never rm.')
+         f'Files: {TRASH} "<path>" (to the Recycle Bin), never rm or del.')
 # safe mode: the user gets an Allow card first, so the AI may do what was clearly asked
 ASK_FIRST = ('Delete, send, post or buy only when the user clearly asks; the user sees an Allow / Don\'t Allow card first, so just run it, '
-             'never ask in words. Files: trash "<path>" (to the Trash), never rm. If the user says no, stop and say it was not done.')
+             f'never ask in words. Files: {TRASH} "<path>" (to the Recycle Bin), never rm or del. If the user says no, stop and say it was not done.')
 
 LEARN_ME = f"""
 About the user: if they state a lasting fact about themselves that helps day to day (their name, city, school or job,
@@ -130,19 +155,20 @@ Show me where (on): when the user asks where something is or how to do something
 [point N X Y]: N = the screen number of the labeled picture, X Y = the pixel spot in that picture. A ring appears there."""
 
 # Full access: everything runs without asking, except these, which a misheard word must never trigger.
-DENY = [f'Bash({c}:*)' for c in ('rm', 'rmdir', 'sudo', 'dd', 'diskutil', 'shutdown', 'reboot', 'halt', 'git push', 'srm')]
+DENY = [f'Bash({c}:*)' for c in ('rm', 'rmdir', 'sudo', 'dd', 'diskutil', 'shutdown', 'reboot', 'halt', 'git push', 'srm',
+                                  'del', 'erase', 'rd', 'format', 'diskpart', 'cipher', 'bcdedit', 'reg delete', 'Remove-Item', 'Stop-Computer', 'Restart-Computer')]
 
-# Safe mode (Settings, on by default): Claude Code's sandbox lets the AI's commands write only in a throwaway folder.
+# Safe mode (Settings, on by default). On Windows, Claude Code has no sandbox, so safe mode is the gate alone: every
+# command below asks first. The Mac version also ran commands in Claude Code's sandbox (a throwaway folder).
 # App control can't work inside it (Apple Events, opening apps), so those run outside, and the gate below checks every command.
 # A chain runs outside only if every part is listed, so harmless read-only tools are too ("…; curl wttr.in", "| head").
-SAFE_OUT = [f'{c} *' for c in ('osascript', 'open', 'peekaboo', 'mdfind', 'curl', 'head', 'tail', 'grep', 'sort', 'wc', 'echo', 'sleep', 'date', ME)] + ['pbpaste', 'date']
 # What the user must OK first. Matched per command, so `open "…?q=buy shoes"` or a search for "delete" never asks.
-RISKY = [('Delete something?', r'\b(rm|rmdir|srm|unlink|shred|trash|mv)\s|\bdelete\b|empty (the )?trash'),
-         ('Send this?', r'\bsend\b|\bsendmail\b|curl\b.*\s(-X\s*(POST|PUT|PATCH|DELETE)|--data\S*|-d|-F|--form)\s'),
+RISKY = [('Delete something?', r'\b(rm|rmdir|srm|unlink|shred|trash|mv|del|erase|rd|move|move-item|remove-item|ri|clear-recyclebin)\s|\bdelete\b|empty (the )?(trash|recycle bin)|--trash\b'),
+         ('Send this?', r'\bsend\b|\bsendmail\b|send-mailmessage|curl\b.*\s(-X\s*(POST|PUT|PATCH|DELETE)|--data\S*|-d|-F|--form)\s|invoke-(webrequest|restmethod)\b.*-method\s+(post|put|patch|delete)'),
          ('Buy this?', r'\b(buy|purchase|checkout|check out|place (an |the )?order|pay)\b'),
-         ('Change a file?', r'(?<![0-9&])>>?\s*(?!/dev/null|&|/tmp/)\S|\btee\s|curl\b.*\s(-o|--output|-O)\b'),
-         ('Run a system command?', r'do shell script|\bsudo\b|\bkillall\b|\bdefaults write\b')]
-QUIET = (SEARCH, READ, LOOK, FRONT, SHOW, PLACE, PLAY, TYPE, REMEMBER, FORGET, ABOUT, PICK, SET, 'open ', 'mdfind ', 'pbpaste')   # never delete, send or buy
+         ('Change a file?', r'(?<![0-9&])>>?\s*(?!/dev/null|\$null|&|/tmp/|nul\b)\S|\btee\s|curl\b.*\s(-o|--output|-O)\b|\b(set-content|add-content|out-file|new-item|rename-item|copy-item|ren|copy|xcopy|robocopy)\b'),
+         ('Run a system command?', r'\bsudo\b|\bkillall\b|\btaskkill\b|\bstop-process\b|\breg(\.exe)?\s+(add|delete|import)|set-itemproperty|new-itemproperty|\bsc(\.exe)?\s+(config|delete|stop|create)|\bschtasks\b|-verb\s+runas|\bnetsh\b|\bsetx\b|set-executionpolicy|\b(shutdown|stop-computer|restart-computer)\b|\bwinget\s+(install|uninstall)')]
+QUIET = (SEARCH, READ, LOOK, FRONT, SHOW, PLACE, PLAY, TYPE, REMEMBER, FORGET, ABOUT, PICK, SET, FIND, CLIP, MEDIA, NOTE, WINDOWS, 'start "" "http', 'start http')   # never delete, send or buy
 
 
 def risky(cmd):
@@ -220,7 +246,7 @@ def pick(question, options):
 
 def switches():
     """{key: label} for every on/off switch in Settings, read from the Settings page itself. Safe mode and pause stay manual."""
-    page = open(os.path.join(os.path.dirname(ME), 'ui', 'settings.html')).read()
+    page = open(os.path.join(os.path.dirname(SELF), 'ui', 'settings.html'), encoding='utf-8').read()
     return {k: html.unescape(b) for b, k in re.findall(r'<b[^>]*>([^<]+)</b>(?:<span[^>]*>.*?</span>)?</div><label class="sw"><input type="checkbox" data-k="(\w+)"', page)
             if k not in ('safe', 'paused')}
 
@@ -237,42 +263,26 @@ def set_switch(words, on):
 
 
 def thumb(path):
-    """A Quick Look thumbnail (images, PDFs, documents, videos) as a data URL, or '' if macOS has none."""
-    out = tempfile.mkdtemp()   # one folder each: files with the same name must not share a thumbnail
-    try:
-        subprocess.run(['qlmanage', '-t', '-s', '480', '-o', out, path], capture_output=True, timeout=4)
-        png = os.path.join(out, os.path.basename(path) + '.png')
-        return 'data:image/png;base64,' + base64.b64encode(open(png, 'rb').read()).decode() if os.path.exists(png) else ''
-    except (OSError, subprocess.TimeoutExpired):
-        return ''
-    finally:
-        shutil.rmtree(out, True)
+    """A preview for the choices card. Windows thumbnails come in a later version: '' = the card shows the file type."""
+    return ''
 
 
 def choices(options):
     """What the box shows per option: a file gets its name, its folder and date, and a preview; anything else is just its text."""
     from concurrent.futures import ThreadPoolExecutor
     paths = [os.path.expanduser(o) for o in options]
-    imgs = list(ThreadPoolExecutor(len(paths)).map(lambda p: thumb(p) if os.path.isfile(p) else '', paths))   # Quick Look hangs on folders
-    return [{'label': os.path.basename(p.rstrip('/')) or p, 'sub': os.path.basename(os.path.dirname(p.rstrip('/'))) + time.strftime(' · %b %-d, %Y', time.localtime(os.path.getmtime(p))),
-             'path': os.path.dirname(p.rstrip('/')).replace(HOME, '~', 1), 'img': img,
+    imgs = list(ThreadPoolExecutor(len(paths)).map(lambda p: thumb(p) if os.path.isfile(p) else '', paths))
+    day = '%#d' if sys.platform == 'win32' else '%-d'
+    return [{'label': os.path.basename(p.rstrip('/\\')) or p, 'sub': os.path.basename(os.path.dirname(p.rstrip('/\\'))) + time.strftime(f' · %b {day}, %Y', time.localtime(os.path.getmtime(p))),
+             'path': os.path.dirname(p.rstrip('/\\')).replace(HOME, '~', 1), 'img': img,
              'kind': 'Folder' if os.path.isdir(p) else os.path.splitext(p)[1][1:6].upper()}
             if os.path.exists(p) else {'label': o, 'sub': '', 'path': '', 'img': '', 'kind': ''} for o, p, img in zip(options, paths, imgs)]
 
 
-def osa(script, *args):
-    return subprocess.run(['osascript', '-e', script, *args], capture_output=True, text=True).stdout.strip()
-
-
 def screens():
-    """[(name, x, y, w, h, built_in)], top-left coordinates like System Events uses; the first is the main one.
-    built_in comes from macOS itself, so laptop vs monitor works on any Mac, any number of displays."""
-    out = subprocess.run(['osascript', '-l', 'JavaScript', '-e', 'ObjC.import("AppKit"); ObjC.bindFunction("CGDisplayIsBuiltin", ["bool", ["unsigned int"]]); '
-        'var s=$.NSScreen.screens.js, H=s[0].frame.size.height; JSON.stringify(s.map(x=>[x.localizedName.js, x.frame.origin.x, '
-        'H-x.frame.origin.y-x.frame.size.height, x.frame.size.width, x.frame.size.height, '
-        '$.CGDisplayIsBuiltin(ObjC.unwrap(x.deviceDescription.objectForKey("NSScreenNumber")))]))'],
-        capture_output=True, text=True).stdout
-    return [(n, int(x), int(y), int(w), int(h), bool(b)) for n, x, y, w, h, b in json.loads(out)]
+    """[(name, x, y, w, h, built_in)], top-left physical pixels; the first is the main one.
+    built_in comes from Windows' display configuration, so laptop vs monitor works with any number of displays."""
+    return [(m['name'], m['x'], m['y'], m['w'], m['h'], m['built_in']) for m in winctl.monitors()]
 
 
 def describe(scr, fx=None):
@@ -289,100 +299,56 @@ def describe(scr, fx=None):
 
 
 def front():
-    # Atticus.app passes the app the user was in when the user pressed the keys (its own windows can take focus, e.g. onboarding)
-    app = os.environ.get('ATTICUS_FRONT') or osa('tell application "System Events" to get name of first process whose frontmost is true')
-    return app, osa(f'tell application "System Events" to tell process "{app}" to get name of front window')
+    # Atticus.exe passes the app the user was in when the user pressed the keys (its own windows can take focus, e.g. setup)
+    app, win, _ = winctl.front()
+    mine = os.environ.get('ATTICUS_FRONT')
+    if mine and winctl.key(mine) != winctl.key(app):
+        ws = winctl.find(mine)
+        return mine, ws[0]['title'] if ws else ''
+    return app, win
 
 
 def restore_focus(app, task, cmds):
     if re.search(r'\b(switch|focus|go to|bring|full ?screen|close|quit|exit)\b', task.lower()) or any(
             FRONT in c or (SHOW in c and pref('openOn', 'here') == 'here') for c in cmds):
         return
-    # Address a running process, never `activate` an app: that can relaunch it or reopen its closed window.
-    osa('on run argv\ntell application "System Events"\n'
-        'if exists process (item 1 of argv) then\nset frontmost of process (item 1 of argv) to true\n'
-        'end if\nend tell\nend run', app)
+    winctl.focus_app(app)   # only a window that is already open: never relaunch the app
 
 
 def place(proc, where='full', screen='current', title=''):
-    """Move a window with the math done here: where = left|right|full|center, screen = laptop|monitor|current."""
-    if where not in ('left', 'right', 'full', 'center'):
-        return 'where must be left, right, full or center'
-    title = re.sub(r'\.[a-z0-9]{2,4}$', '', title, flags=re.I)   # "notes.pdf" must find a window titled "notes" (macOS hides extensions)
-    # the real window: Chrome's window 1 can be a hidden popup bar
-    win = f'(first window whose name contains "{title}")' if title else '(first window whose subrole is "AXStandardWindow")'
-    aw = f'(first window whose name contains "{title}")' if title else 'window 1'   # never just the front window when a title was given
-    tell = f'tell application "System Events" to tell process "{proc}" to '
-    for tries in range(4):   # a window just opened (--show right before) can take a moment to appear
-        # full screen (or split view) windows can't move; checked each try, since it only shows once the app is forward
-        if osa(tell + f'get value of attribute "AXFullScreen" of {win}') == 'true':
-            osa(tell + f'set value of attribute "AXFullScreen" of {win} to false')
-            time.sleep(1.2)   # the exit animation
-        try:
-            px, py = map(int, osa(tell + f'get position of {win}').split(', '))
-            ww, wh = map(int, osa(tell + f'get size of {win}').split(', '))
-            app_mode = False
-            break
-        except ValueError:   # System Events can't see it (another Space): scriptable apps (Notes, Finder…) answer for their own windows, fast
-            try:
-                l, t, r, b = map(int, osa(f'tell application "{proc}" to get bounds of {aw}').split(', '))
-                px, py, ww, wh, app_mode = l, t, r - l, b - t, True
-                break
-            except ValueError:   # not scriptable, or not open yet: bring it forward, look again
-                if not tries:
-                    osa(f'tell application "{proc}" to activate')
-                if tries < 3:
-                    time.sleep(0.4)
-    else:
-        return f'no window found for "{proc}" {title}'
-    pick = {'laptop': lambda s: s[5], 'monitor': lambda s: not s[5]}.get(
-        screen, (lambda s: s[0] == screen) if screen != 'current' else (lambda s: s[1] <= px + ww // 2 < s[1] + s[3]))
-    scr = screens()
-    n, x, y, w, h, _ = next((s for s in scr if pick(s)), scr[0])
-    y, h = y + 25, h - 25   # menu bar
-    cw, ch = min(ww, w), min(wh, h)
-    bx, by, bw, bh = {'left': (x, y, w // 2, h), 'right': (x + w // 2, y, w - w // 2, h), 'full': (x, y, w, h),
-                      'center': (x + (w - cw) // 2, y + (h - ch) // 2, cw, ch)}[where]
-    # One step via the app when it is scriptable (Finder, Safari, Chrome…): after a window moves to the other
-    # display, System Events often can't see it any more, so a later resize would miss.
-    one = f'tell application "{proc}" to set bounds of {aw} to {{{bx}, {by}, {bx + bw}, {by + bh}}}'
-    if (title and not app_mode) or subprocess.run(['osascript', '-e', one], capture_output=True).returncode:
-        osa(tell + f'set size of {win} to {{{bw}, {bh}}}')   # size first, then move, then size again
-        osa(tell + f'set position of {win} to {{{bx}, {by}}}')
-        osa(tell + f'set size of {win} to {{{bw}, {bh}}}')
-    return f'{proc} window -> {where} of {n}'
+    """Move a window with the math done here: where = left|right|full|center, screen = laptop|monitor|current|a display's name."""
+    return winctl.place(proc, where, screen, title)
+
+
+def is_url(t):
+    return bool(re.match(r'^[a-z][a-z0-9+.-]*:(//)?\S', t, re.I)) and not re.match(r'^[a-z]:[\\/]', t, re.I)
 
 
 def show(target):
-    """Open a URL, file or app where the user can see it, then hand focus back to the app the user was using."""
+    """Open a URL, file or app where the user can see it; on the other screen (Settings), hand focus back to the user's app."""
     mine, _ = front()
-    t = os.path.expanduser(target)
+    t = os.path.expanduser(target.strip())
+    app = None
+    try:
+        if is_url(t) or os.path.exists(t):
+            os.startfile(t)
+            app = winctl.opener(t)
+        else:
+            app = app_named(t) or t
+            if not winctl.launch(app):
+                return f'no app or file called "{target}"'
+    except OSError as e:
+        return f'could not open {target}: {e.strerror or e}'
     if pref('openOn', 'here') == 'here':   # Settings → Open apps on: This screen = in front, like a double-click
-        r = subprocess.run(['open', t] if re.match(r'^[a-z]+://', t) or os.path.exists(t) else ['open', '-a', t])
-        return f'no app or file called "{target}"' if r.returncode else f'opened {target} in front'
-    if re.match(r'^[a-z]+://', t) or os.path.exists(t):
-        subprocess.run(['open', '-g', t])
-        js = ('ObjC.import("AppKit"); var t = %s; var u = /^[a-z]+:\\/\\//.test(t) ? $.NSURL.URLWithString(t) : $.NSURL.fileURLWithPath(t); '
-              '$.NSWorkspace.sharedWorkspace.URLForApplicationToOpenURL(u).path.js') % json.dumps(t)
-        app = os.path.basename(subprocess.run(['osascript', '-l', 'JavaScript', '-e', js], capture_output=True, text=True).stdout.strip())[:-4]
-    else:
-        if subprocess.run(['open', '-g', '-a', t]).returncode:
-            return f'no app or file called "{target}"'
-        app = t
+        return f'opened {target} in front'
     scr, other = screens(), None
-    if len(scr) > 1 and app and app != mine:
-        for _ in range(15):   # wait for its window, at most 1.5 s
-            if osa(f'tell application "System Events" to count windows of process "{proc_of(app)}"') not in ('', '0'):
-                break
-            time.sleep(0.1)
-        try:
-            x = int(osa(f'tell application "System Events" to tell process "{mine}" to get position of window 1').split(', ')[0])
-        except ValueError:
-            x = 0
+    if len(scr) > 1 and app and winctl.key(app) != winctl.key(mine):
+        ws = winctl.find(mine)
+        x = winctl.frame(ws[0]['hwnd'])[0] if ws else 0
         other = next((s[0] for s in scr if not s[1] <= x + 50 < s[1] + s[3]), None)
         if other:
             place(app, 'center', other)
-        osa(f'tell application "System Events" to set frontmost of process "{mine}" to true')
+        winctl.focus_app(mine)
     return f'opened {target} in {app or "its app"}' + (f' on {other}; focus back on {mine}' if other else '')
 
 
@@ -402,7 +368,10 @@ def playlist(name):
     if hit() or (os.path.exists(PLAYLISTS) and time.time() - os.path.getmtime(PLAYLISTS) < 3600):
         return hit()   # rescan at most hourly: mid-speech checks call this on every word
     ids = set()   # not known yet: read every playlist id from the cache, name the new ones (once each, saved)
-    for root, _, files in os.walk(os.path.join(HOME, 'Library/Application Support/Spotify')):
+    caches = [os.path.join(os.environ.get('APPDATA', ''), 'Spotify'), os.path.join(os.environ.get('LOCALAPPDATA', ''), 'Spotify')]
+    pk = os.path.join(os.environ.get('LOCALAPPDATA', ''), 'Packages')   # the Microsoft Store version
+    caches += [os.path.join(pk, d, 'LocalState', 'Spotify') for d in (os.listdir(pk) if os.path.isdir(pk) else []) if d.startswith('SpotifyAB')]
+    for root, _, files in (w for c in caches for w in os.walk(c)):
         for f in files:
             try:
                 ids |= set(re.findall(rb'spotify:playlist:([A-Za-z0-9]{22})', open(os.path.join(root, f), 'rb').read()))
@@ -437,30 +406,59 @@ def play(name, anything=True):
             p = None
     if not p:
         return None
-    osa(f'tell application "Spotify" to play track "{p[0]}"')
+    spotify_play(p[0])
     return f'Playing {p[1]} on Spotify.'
 
 
+def spotify_play(uri):
+    """Open the URI in the Spotify app; if it opened without playing (its window title is "Spotify…" while paused), press play."""
+    was = winctl.front()[2]
+    os.startfile(uri)
+    for _ in range(30):
+        time.sleep(0.15)
+        ws = winctl.find('Spotify')
+        if ws and not ws[0]['title'].lower().startswith('spotify'):
+            break   # the title is "Artist - Song": it's playing
+    else:
+        if winctl.find('Spotify'):
+            winctl.media('playpause')
+    if was:
+        winctl.bring(was)   # the user's focus stays put
+
+
 ALIASES = {'chrome': 'Google Chrome', 'vs code': 'Visual Studio Code', 'vscode': 'Visual Studio Code', 'code': 'Visual Studio Code',
-           'settings': 'System Settings', 'terminal': 'Terminal', 'finder': 'Finder'}
+           'edge': 'Microsoft Edge', 'terminal': 'Terminal', 'explorer': 'File Explorer', 'file explorer': 'File Explorer', 'files': 'File Explorer',
+           'word': 'Word', 'excel': 'Excel', 'powerpoint': 'PowerPoint', 'outlook': 'Outlook', 'teams': 'Microsoft Teams', 'paint': 'Paint',
+           'task manager': 'Task Manager', 'control panel': 'Control Panel'}
+URIS = {'settings': 'ms-settings:', 'windows settings': 'ms-settings:', 'calendar': 'outlookcal:', 'mail': 'outlookmail:', 'store': 'ms-windows-store:',
+        'camera': 'microsoft.windows.camera:', 'clock': 'ms-clock:', 'alarms': 'ms-clock:', 'calculator': 'calculator:'}
 LAST = os.path.join(DIR, 'last_app')
 
 
 def app_named(words):
-    """Spoken name -> installed app name, or None. Whole-name matches only, so "chrome history" is not Chrome."""
+    """Spoken name -> a Start-menu app's name, or None. Whole-name matches only, so "chrome history" is not Chrome."""
     w = re.sub(r'\s+(app|application)$', '', words.lower().strip(' .!?').removeprefix('the ').removeprefix('my '))
+    names = [a['name'] for a in winctl.apps()]
     if w in ALIASES:
-        return ALIASES[w]
-    key = lambda n: re.sub(r'[^a-z0-9]', '', n.lower())   # "trading view" = "TradingView"
-    apps = [f[:-4] for d in ('/Applications', '/System/Applications', '/System/Applications/Utilities', HOME + '/Applications')
-            if os.path.isdir(d) for f in os.listdir(d) if f.endswith('.app')]
-    return next((a for a in apps if key(a) == key(w)), None) or next((a for a in apps if key(a.split()[-1]) == key(w)), None)
+        hit = next((n for n in names if n.lower() == ALIASES[w].lower()), None) or next((n for n in names if n.lower().startswith(ALIASES[w].lower())), None)
+        if hit:
+            return hit
+    key = winctl.key   # "trading view" = "TradingView"
+    for test in (lambda n: key(n) == key(w), lambda n: key(n.split()[-1]) == key(w), lambda n: key(re.sub(r'\s*\(.*\)$', '', n)) == key(w)):
+        hit = next((n for n in names if test(n)), None)
+        if hit:
+            return hit
+    return None
+
+
+def open_app(app):
+    """Start an app by its Start-menu name, or one of Windows' own pages (Settings, Calendar…)."""
+    return winctl.launch(app)
 
 
 def proc_of(app):
-    """App name -> its System Events process name (Visual Studio Code runs as "Code")."""
-    bid = osa(f'id of application "{app}"')
-    return osa(f'tell application "System Events" to get name of first process whose bundle identifier is "{bid}"') or app
+    """App name -> what winctl.place finds it by (the app name works there, so it stays as is)."""
+    return app
 
 
 def plain(text):
@@ -493,7 +491,7 @@ def learn(task, cmds, reply):
     if any(x in c for c in cmds for x in (FORGET, SHORTCUT)):   # changing rules or shortcuts is not itself a shortcut
         return
     cmds = [c for c in cmds if not c.startswith((REMEMBER, ABOUT))]   # saving a rule or a fact is not part of the action
-    act = (SHOW, PLACE, PLAY, TYPE, 'open ', 'osascript ')
+    act = (SHOW, PLACE, PLAY, TYPE, MEDIA, 'start ', 'explorer ')
     # 'make new': a reminder or note holds this moment's words ("make the task list" must not re-add old items)
     if not cmds or DEICTIC.search(k) or not all(c.startswith(act) and 'peekaboo' not in c and 'make new' not in c and not risky(c) for c in cmds):
         return
@@ -517,7 +515,7 @@ def replay(k):
         return None   # the AI's tool gate can show the Allow card; direct replay cannot
     for c in s['cmds']:   # any failure: hand it to the AI instead
         try:
-            if subprocess.run(['/bin/zsh', '-c', c], capture_output=True, timeout=20).returncode:
+            if subprocess.run([winctl.bash(), '-c', c], capture_output=True, timeout=20, env=shim_env()).returncode:
                 return None
         except subprocess.TimeoutExpired:
             return None
@@ -539,8 +537,8 @@ def fast(text):
     m = re.fullmatch(r'(?:search(?: up)?|google|look up)(?: for)? (.+?)(?: (?:on|in) (google|chrome|safari|youtube|spotify|amazon|the web))?', t)
     if m and not re.search(r'\b(this|that|it|these|my)\b', m[1]):   # "search this" needs the screen: AI
         q = urllib.parse.quote(m[1])
-        subprocess.run(['open', {'youtube': f'https://www.youtube.com/results?search_query={q}', 'spotify': f'spotify:search:{q}',
-                                 'amazon': f'https://www.amazon.com/s?k={q}'}.get(m[2], f'https://www.google.com/search?q={q}')])
+        os.startfile({'youtube': f'https://www.youtube.com/results?search_query={q}', 'spotify': f'spotify:search:{q}',
+                                 'amazon': f'https://www.amazon.com/s?k={q}'}.get(m[2], f'https://www.google.com/search?q={q}'))
         return f'Searched {m[1]}' + (f' on {m[2].title()}.' if m[2] in ('youtube', 'spotify', 'amazon') else '.')
     m = re.fullmatch(r'play (?:my |the )?(?:spotify )?(?:playlist )?(?:called |named )?(.+?)( playlist)?( on spotify)?', t)
     if m and not DEICTIC.search(m[1]):   # "play X" alone may mean a video: only the user's playlist here, anything else goes to the AI (which uses --play)
@@ -561,15 +559,18 @@ def fast(text):
         site = target.replace(' dot ', '.')
         site = next((w.rstrip('.,!') for w in text.split() if plain(w) == target), site)
         if re.fullmatch(r'(?:https?://)?[\w-]+(\.[\w-]+)+(/\S*)?', site) and not re.search(r'\.(pdf|docx?|xlsx?|pptx?|txt|csv|png|jpe?g|heic|key|pages|numbers|zip|mp[34]|mov|md|py|java)$', target):
-            subprocess.run(['open', site if site.startswith(('https://', 'http://')) else 'https://' + site])
+            os.startfile(site if site.startswith(('https://', 'http://')) else 'https://' + site)
             return f'Opened {target}.'
+        if target in URIS and not app_named(target):   # Windows' own pages
+            os.startfile(URIS[target])
+            return f'Opened {target.title()}.'
         app = app_named(target)
         if not app:
             return None
         if pref('openOn', 'here') == 'other':
             show(app)   # Settings: open on the other screen and keep focus (slower, ~1-3 s)
-        else:
-            subprocess.run(['open', '-a', app])   # plain open, ~0.1 s: here and in front
+        elif not open_app(app):   # plain open, ~0.1 s: here and in front
+            return None
         open(LAST, 'w').write(app)
         return f'Opened {app}.'
     m = re.fullmatch(r'(?:snap|move|put|throw|send|make)\s+(.+?)\s+(?:to\s+|on\s+|onto\s+)?(?:the\s+|my\s+)?'
@@ -579,7 +580,7 @@ def fast(text):
         return None
     who, where, screen = m[1], m[2].replace(' ', ''), m[3] or 'current'
     if who in ('it', 'that', 'this', 'that window', 'this window', 'the window'):
-        app = open(LAST).read().strip() if os.path.exists(LAST) and time.time() - os.path.getmtime(LAST) < 600 else front()[0]
+        app = open(LAST, encoding='utf-8').read().strip() if os.path.exists(LAST) and time.time() - os.path.getmtime(LAST) < 600 else front()[0]
     else:
         app = app_named(who)
         if not app:
@@ -595,25 +596,26 @@ def fast(text):
 
 
 def look():
-    """Every display, at once, 1280 px wide (≈1.5K tokens each) -> [(path, label)]. "My monitor" needs the right one."""
-    scr = screens()
+    """Every display, at once, 1280 px wide (≈1.5K tokens each) -> [(path, label)]. "My monitor" needs the right one.
+    The Atticus box is never in the picture: the app excludes its own windows from screen capture."""
+    mons = winctl.monitors()
     def one(i):
-        fd, path = tempfile.mkstemp(prefix=f'atticus-screen-{i}-', suffix='.jpg')
+        fd, path = tempfile.mkstemp(prefix=f'{SHOT}{i}-', suffix='.jpg')
         os.close(fd)
-        os.remove(path)
         atexit.register(lambda: os.path.exists(path) and os.remove(path))
-        # Atticus.app takes it, leaving its own box out; plain screencapture is the fallback (box included)
-        if subprocess.run([APP, '--look', str(i), path], capture_output=True).returncode:
-            subprocess.run(['screencapture', '-x', '-D', str(i), '-t', 'jpg', path])
-            subprocess.run(['sips', '-Z', '1280', '-s', 'formatOptions', '70', path], capture_output=True)
-        s = scr[i - 1]
-        return path, f'Screen {i}: "{s[0]}" ({"built-in laptop screen" if s[5] else "external monitor"})'
+        try:
+            winctl.capture(mons[i - 1], path)
+        except Exception:
+            os.remove(path)
+            return path, ''
+        m = mons[i - 1]
+        return path, f'Screen {i}: "{m["name"]}" ({"built-in laptop screen" if m["built_in"] else "external monitor"})'
     from concurrent.futures import ThreadPoolExecutor
-    return [r for r in ThreadPoolExecutor(len(scr) or 1).map(one, range(1, len(scr) + 1)) if os.path.exists(r[0])]
+    return [r for r in ThreadPoolExecutor(len(mons) or 1).map(one, range(1, len(mons) + 1)) if os.path.exists(r[0])]
 
 
 def get(url, timeout=10):
-    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 (Macintosh) AppleWebKit/605 Safari/605'})
+    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36'})
     return urllib.request.urlopen(req, timeout=timeout).read().decode('utf-8', 'replace')
 
 
@@ -647,7 +649,8 @@ def label(name, inp):
     if name == 'WebFetch':
         return 'Reading ' + re.sub(r'^https?://(www\.)?([^/]+).*', r'\2', inp.get('url', ''))
     if name == 'Read':
-        return 'Reading your screen' if inp.get('file_path', '').startswith(SHOT) else 'Reading ' + os.path.basename(inp.get('file_path', ''))
+        f = os.path.basename(inp.get('file_path', '').replace('\\', '/'))
+        return 'Reading your screen' if f.startswith(SHOT) else 'Reading ' + f
     c = re.sub(r'^cd \S+\s*(;|&&)\s*', '', ' '.join(inp.get('command', '').split()))   # "cd /tmp; <helper>" reads as the helper
     if c.startswith(SEARCH):
         return 'Searching the web: ' + c[len(SEARCH):].strip(' "\'')
@@ -672,6 +675,18 @@ def label(name, inp):
         return 'Playing ' + c[len(PLAY):].strip(' "\'') + ' on Spotify'
     if c.startswith(LOOK):
         return 'Looking at your screen'
+    if c.startswith(FIND):
+        return 'Searching your files'
+    if c.startswith(CLIP):
+        return 'Reading the clipboard'
+    if c.startswith(MEDIA):
+        return 'Using the music controls'
+    if c.startswith(TRASH):
+        return 'Moving it to the Recycle Bin'
+    if c.startswith(NOTE):
+        return 'Noting that down'
+    if c.startswith(WINDOWS):
+        return 'Checking your windows'
     if c.startswith(FRONT):
         return 'Bringing ' + (re.findall(r'"([^"]+)"', c) or ['the app'])[0] + ' forward'
     if c.startswith(PLACE):
@@ -689,9 +704,8 @@ def label(name, inp):
     m = re.match(r'^open -a (?:"([^"]+)"|(\S+))', c)
     if m:
         return 'Opening ' + (m[1] or m[2]).rstrip(';')
-    for pat, fmt in ((r'^open "?https?://(?:www\.)?([^/"]+)', 'Opening {}'),
-                     (r'^mdfind', 'Searching your files'), (r'arxiv', 'Searching papers'), (r'^pbpaste', 'Reading the clipboard'),
-                     (r'tell application "(?!System Events)([^"]+)"', 'Using {}'), (r'process "([^"]+)"', 'Checking {} windows')):
+    for pat, fmt in ((r'^(?:open|start(?: "")?) "?https?://(?:www\.)?([^/"]+)', 'Opening {}'), (r'wttr\.in', 'Checking the weather'),
+                     (r'arxiv', 'Searching papers'), (r'^powershell', 'Working in Windows')):
         m = re.search(pat, c)
         if m:
             return fmt.format(*m.groups())
@@ -705,27 +719,27 @@ BUDGET = {'usd': 0.002, 'secs': 6}   # median of the last 50 AI asks must stay u
 
 
 def notify(text):
-    osa('on run argv\ndisplay notification (item 1 of argv) with title "Atticus" sound name "Glass"\nend run', text)
+    winctl.notify(text)
 
 
 def watch(what, then, app='', words='', mode='', phrase=''):
-    """Free while it waits: every 5 s, a shell test (`what`, exit 0 = done) or one window's text read on this Mac. No AI;
-    the AI runs again only for `then`."""
+    """Free while it waits: every 5 s, a shell test (`what`, exit 0 = done, in Git Bash) or one window's text (Atticus.exe --text,
+    Windows' own OCR). No AI; the AI runs again only for `then`."""
     norm = lambda s: ' '.join(s.lower().split())
     phrase, hits, misses, end = norm(phrase), 0, 0, time.time() + 3 * 3600
     while time.time() < end:
         if app:
-            r = subprocess.run([APP, '--text', app, words], capture_output=True, text=True)
+            r = subprocess.run([APP, '--text', app, words], capture_output=True, text=True, encoding='utf-8', errors='replace')
             misses = misses + 1 if r.returncode else 0
             if misses >= 3:
-                return notify(f"Stopped watching {app}: can't see its window. It must stay open on this desktop (covered is fine, minimized is not).")
+                return notify(f"Stopped watching {app}: can't see its window. It must stay open (covered is fine, minimized is not).")
             done = not r.returncode and (phrase in norm(r.stdout)) == (mode == 'shows')
         else:
-            done = subprocess.run(['/bin/sh', '-c', what], capture_output=True).returncode == 0
+            done = subprocess.run([winctl.bash(), '-c', what], capture_output=True, env=shim_env()).returncode == 0
         hits = hits + 1 if done else 0
         if hits >= 2:   # twice in a row: one bad read or a flicker between steps must not fire it
             notify(f'{app or what[:40]}: done.' + (f' Now: {then}' if then else ''))
-            return then and subprocess.run([sys.executable, ME, then])
+            return then and subprocess.run([sys.executable, SELF, then])
         time.sleep(5)
     notify('Stopped watching after 3 hours.')
 
@@ -820,37 +834,59 @@ def plan():
 
 
 def stop_claude(p):
-    try:
-        os.killpg(p.pid, signal.SIGKILL)   # includes running tools and permission hooks
-    except OSError:   # already gone, or its group is out of reach (EPERM): nothing left to stop
-        pass
+    if p.poll() is None:
+        winctl.kill_tree(p.pid)   # includes running tools and permission hooks
 
 
 def stop_workers(*_):
     signal.signal(signal.SIGTERM, signal.SIG_IGN)
-    if os.getpgrp() == os.getpid():
-        os.killpg(os.getpid(), signal.SIGTERM)
+    winctl.kill_tree(os.getpid(), me_too=False)   # this worker's own helper processes
     sys.exit(0)
+
+
+def shim():
+    """`atticus` for the AI's Bash (Git Bash): a two-line script that runs this file with this Python. Short commands keep
+    the system prompt cheap, and learned shortcuts stay valid if Atticus moves."""
+    d = os.path.join(DIR, 'bin')
+    body = f'#!/bin/sh\nexport PYTHONUTF8=1\nexec "{sys.executable.replace(os.sep, "/")}" "{SELF.replace(os.sep, "/")}" "$@"\n'
+    path = os.path.join(d, 'atticus')
+    try:
+        if open(path, encoding='utf-8').read() == body:
+            return d
+    except OSError:
+        pass
+    os.makedirs(d, exist_ok=True)
+    with open(path, 'w', encoding='utf-8', newline='\n') as f:
+        f.write(body)
+    return d
+
+
+def shim_env():
+    return {**os.environ, 'PATH': shim() + os.pathsep + os.environ.get('PATH', ''), 'PYTHONUTF8': '1'}
 
 
 def start_claude():
     """`claude -p` started ahead, waiting for the request on stdin: its ~1 s startup happens while the user is still talking."""
-    if not shutil.which('claude'):
+    claude = shutil.which('claude')
+    if not claude:
         return None
     system = SYSTEM.replace('NEVER_RISKY', ASK_FIRST if pref('safe', True) else NEVER) + (ASK_ME if pref('askMe', True) else '') + (POINTER if pref('pointer', False) else '') + (LEARN_ME if pref('learnMe', True) else '') + (TEACH if pref('tips', True) else '')
     settings = {}
     ask = tempfile.mkdtemp(prefix='atticus-ask-')   # the Allow card (safe mode) and the choices card talk through it
     atexit.register(shutil.rmtree, ask, True)   # however this run ends
-    if pref('safe', True):
-        settings['sandbox'] = {'enabled': True, 'autoAllowBashIfSandboxed': True, 'allowUnsandboxedCommands': True, 'excludedCommands': SAFE_OUT}
-    if pref('safe', True) or os.environ.get('ATTICUS_COMMIT'):
-        settings['hooks'] = {'PreToolUse': [{'matcher': '.*', 'hooks': [{'type': 'command', 'command': f'"{sys.executable}" "{ME}" --gate', 'timeout': 140}]}]}
-    errors = tempfile.TemporaryFile(mode='w+')   # draining a pipe only after wait() can deadlock
-    p = subprocess.Popen(['claude', '-p', '--input-format', 'stream-json', '--model', pref('model', 'haiku'), '--effort', 'low', '--system-prompt', system,
-                          '--tools', 'Bash,Read,WebSearch,WebFetch', '--permission-mode', 'bypassPermissions', '--disallowedTools', *DENY, '--settings', json.dumps(settings),
+    if pref('safe', True) or os.environ.get('ATTICUS_COMMIT'):   # no sandbox on Windows: the gate is the whole of safe mode
+        gate_cmd = f'"{sys.executable.replace(os.sep, "/")}" "{SELF.replace(os.sep, "/")}" --gate'
+        settings['hooks'] = {'PreToolUse': [{'matcher': '.*', 'hooks': [{'type': 'command', 'command': gate_cmd, 'timeout': 140}]}]}
+    errors = tempfile.TemporaryFile(mode='w+', encoding='utf-8', errors='replace')   # draining a pipe only after wait() can deadlock
+    # The prompt and settings go in files: an npm-installed claude.cmd runs through cmd.exe, which cuts command lines at 8 KB.
+    sp, st = os.path.join(ask, 'system.md'), os.path.join(ask, 'settings.json')
+    open(sp, 'w', encoding='utf-8').write(system)
+    json.dump(settings, open(st, 'w', encoding='utf-8'))
+    p = subprocess.Popen([claude, '-p', '--input-format', 'stream-json', '--model', pref('model', 'haiku'), '--effort', 'low', '--system-prompt-file', sp,
+                          '--tools', 'Bash,Read,WebSearch,WebFetch', '--permission-mode', 'bypassPermissions', '--disallowedTools', *DENY, '--settings', st,
                           '--setting-sources', '', '--no-session-persistence', '--strict-mcp-config', '--disable-slash-commands', '--output-format', 'stream-json', '--verbose'],
-                         stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=errors, text=True, cwd=tempfile.gettempdir(), start_new_session=True,
-                         env={**os.environ, 'ATTICUS_ASK': ask})
+                         stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=errors, text=True, encoding='utf-8', errors='replace', cwd=tempfile.gettempdir(),
+                         env={**shim_env(), 'ATTICUS_ASK': ask})
     p.ask, p.errors = ask, errors
     atexit.register(errors.close)
     atexit.register(stop_claude, p)
@@ -876,14 +912,13 @@ def relay(p):
             elif 'pick' in j and os.environ.get('ATTICUS_UI') == '1':   # "◇ {json}": the choices card
                 print('◇ ' + json.dumps({'q': j['pick'], 'options': choices(j['options']), 'a': a}), flush=True)
             elif 'pick' in j:
-                r = osa('on run argv\nset r to choose from list (rest of argv) with prompt (item 1 of argv)\nif r is false then return ""\nreturn item 1 of r\nend run', j['pick'], *j['options'])
-                open(a + '.tmp', 'w').write(str(j['options'].index(r)) if r in j['options'] else '')
+                r = winctl.choose(j['pick'], j['options'])
+                open(a + '.tmp', 'w').write('' if r is None else str(r))
                 os.rename(a + '.tmp', a)   # whole, or the waiting side reads it half-written
             elif os.environ.get('ATTICUS_UI') == '1':
                 print(f"? {j['q']}\t{' '.join(j['cmd'].split())}\t{a}", flush=True)   # not say(): it would squash the tabs
             else:
-                yes = osa('on run argv\ndisplay dialog (item 2 of argv) with title (item 1 of argv) buttons {"Don\'t Allow", "Allow"}\n'
-                          'return button returned of result\nend run', j['q'], j['cmd']) == 'Allow'
+                yes = winctl.ask_yes(j['q'], j['cmd'])
                 open(a, 'w').write('y' if yes else 'n')
         time.sleep(0.1)
 
@@ -1004,20 +1039,21 @@ def remember_turn(q, a):
 
 
 def ask():
-    out = osa('tell application "System Events"\nactivate\nset r to display dialog "What should I do?" default answer "" '
-              'buttons {"Cancel", "Go"} default button "Go" with title "Atticus"\nreturn text returned of r\nend tell')
-    return out.strip()
+    return winctl.ask_text('What should I do?')
 
 
 def main():
     args = sys.argv[1:]
     if args == ['--wait'] or args[:1] == ['--fast']:
-        os.setpgrp()   # cancellation also stops the worker's own helper processes
-        signal.signal(signal.SIGTERM, stop_workers)
+        signal.signal(signal.SIGTERM, stop_workers)   # Atticus.exe also ends the whole tree (a job object)
     if args[:1] == ['--watch'] and (len(args) in (5, 6) and args[3] in ('gone', 'shows') or len(args) in (3, 4) and args[1] == 'cmd'):
         os.makedirs(WATCHING, exist_ok=True)   # the watcher runs on after this ask ends
-        w = subprocess.Popen([sys.executable, ME, '--watching', *args[1:]], start_new_session=True,
-                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        spawn = lambda flags: subprocess.Popen([sys.executable, SELF, '--watching', *args[1:]], creationflags=flags,
+                                               stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, close_fds=True)
+        try:
+            w = spawn(0x08000000 | 0x00000200 | 0x01000000)   # no window, own group, out of the ask's job so it outlives the ask
+        except OSError:   # a job that forbids leaving it
+            w = spawn(0x08000000 | 0x00000200)
         open(os.path.join(WATCHING, str(w.pid)), 'w').write(' '.join(args[1:]))
         return print(f'watching {args[1]} (free until it fires)')
     if args[:1] == ['--watching']:
@@ -1057,28 +1093,35 @@ def main():
         return print('\n'.join(ThreadPoolExecutor(len(moves) or 1).map(lambda m: place(*m), moves)))
     if args == ['--look']:
         return print('\n'.join(f'{label}: {path}' for path, label in look()) or 'no screenshot: allow Atticus in Screen Recording (System Settings)')
-    if args[:1] == ['--front'] and len(args) > 1:   # "show me where" on an app or tab the user isn't looking at
+    if args[:1] == ['--front'] and len(args) > 1:   # "show me where" on an app or window the user isn't looking at
         app, words = args[1], ' '.join(args[2:])
-        osa(f'tell application "{app}" to activate')
-        if words:   # any app: the window whose title has the words; browsers: also that tab (fails quietly elsewhere). `contains` ignores case.
-            osa(f'on run argv\ntell application "System Events" to tell (first process whose name is "{proc_of(app)}")\n'
-                'perform action "AXRaise" of (first window whose name contains item 1 of argv)\nend tell\nend run', words)
-            set_tab = 'set current tab of w to t' if app == 'Safari' else 'set active tab index of w to i'
-            name = 'name' if app == 'Safari' else 'title'
-            osa(f'on run argv\ntell application "{app}"\nrepeat with w in windows\nset i to 0\nrepeat with t in tabs of w\nset i to i + 1\n'
-                f'if ({name} of t contains item 1 of argv) or (URL of t contains item 1 of argv) then\n{set_tab}\nset index of w to 1\nreturn\n'
-                'end if\nend repeat\nend repeat\nend tell\nend run', words)
+        if not winctl.focus_app(app, words) and not winctl.focus_app(app):
+            show(app)   # not open yet
+            for _ in range(20):
+                time.sleep(0.25)
+                if winctl.focus_app(app, words) or winctl.focus_app(app):
+                    break
         time.sleep(0.5)   # the window draws before the picture
-        return print('\n'.join(f'{label}: {path}' for path, label in look()) or 'no screenshot: allow Atticus in Screen Recording (System Settings)')
+        return print('\n'.join(f'{label}: {path}' for path, label in look()) or 'no screenshot available')
     if args[:1] == ['--type']:   # paste into the focused field of the user's app, then put the user's clipboard back
-        app, text = front()[0], ' '.join(args[1:])
-        old = subprocess.run(['pbpaste'], capture_output=True).stdout
-        subprocess.run(['pbcopy'], input=text.encode())
-        r = subprocess.run(['osascript', '-e', f'tell application "{app}" to activate', '-e', 'delay 0.25',
-                            '-e', 'tell application "System Events" to keystroke "v" using command down'], capture_output=True, text=True)
-        time.sleep(0.4)
-        subprocess.run(['pbcopy'], input=old)
-        return print(f'typed into {app}' if not r.returncode else f'could not type: {r.stderr.strip()} (allow Atticus in Accessibility)')
+        return print(winctl.paste_into(front()[0], ' '.join(args[1:])))
+    if args[:1] == ['--find']:
+        rest, content, where = args[1:], '--content' in args, ''
+        if '--in' in rest:
+            i = rest.index('--in'); where = rest[i + 1] if i + 1 < len(rest) else ''; rest = rest[:i] + rest[i + 2:]
+        hits = winctl.find_files(' '.join(a for a in rest if a != '--content'), content, where)
+        return print('\n'.join(hits) or 'nothing found')
+    if args == ['--clip']:
+        return print(winctl.get_clip())
+    if args[:1] == ['--media'] and len(args) == 2:
+        return print(winctl.media(args[1]))
+    if args[:1] == ['--trash'] and len(args) > 1:
+        return print(winctl.trash(' '.join(args[1:])))
+    if args[:1] == ['--note'] and len(args) > 1:
+        return print(winctl.note(' '.join(args[1:])))
+    if args[:1] == ['--windows']:
+        ws = winctl.find(' '.join(args[1:])) if args[1:] else winctl.windows()
+        return print('\n'.join(f"{w['app']} ({w['proc']}): {w['title']}" for w in ws[:30]) or 'no windows')
     if args[:1] == ['--show']:
         return print(show(' '.join(args[1:])))
     if args[:1] == ['--remember']:
@@ -1114,7 +1157,7 @@ def main():
             return {'asks': len(r), 'usd': round(sum(x.get('usd', 0) for x in r), 4),
                     'secs': round(sum(x.get('secs', 0) for x in r) / len(r), 1) if r else 0}
         week = time.strftime('%Y-%m-%d', time.localtime(time.time() - 6 * 86400))
-        rules = [l[2:].strip() for l in open(MEMORY)] if os.path.exists(MEMORY) else []
+        rules = [l[2:].strip() for l in open(MEMORY, encoding='utf-8')] if os.path.exists(MEMORY) else []
         return print(json.dumps({'today': use(time.strftime('%Y-%m-%d')), 'week': use(week), 'all': use(''),
                                  'rules': [r for r in rules if r], 'plan': plan(),
                                  'skills': [{'say': k, 'reply': v['reply']} for k, v in sorted(skills().items())], 'me': me()}))
@@ -1145,7 +1188,7 @@ def main():
     shots = []
     snap = threading.Thread(target=lambda: shots.extend(look()), daemon=True)   # the screen as the user pressed the keys; sent only if the words are about it
     snap.shots = shots
-    atexit.register(lambda: [os.remove(p) for p, _ in shots if os.path.exists(p)])   # private: no screenshot left in /tmp
+    atexit.register(lambda: [os.remove(p) for p, _ in shots if os.path.exists(p)])   # private: no screenshot left in Temp
     snap.start()
     if args == ['--wait']:   # "<app the user is in now>\t<request>", even if Claude could not start
         front_now, _, task = sys.stdin.readline().strip().rpartition('\t')
@@ -1162,7 +1205,7 @@ def main():
             stop_claude(warm)
         if key:
             return say('✓', activate(key[1]))
-        subprocess.run(['open', BUY])
+        os.startfile(BUY)
         return say('✓', f'Atticus is $5, once. Buy a key on the page that just opened, then type: key <your key>')
     t = time.time()
     commit = os.environ.get('ATTICUS_COMMIT')
@@ -1174,14 +1217,10 @@ def main():
         log_turn(task, quick, t)
         return say('✓', quick)
     app, win = front()   # before anything else takes focus, so "this window" still means the user's window
-    try:
-        fx = int(osa(f'tell application "System Events" to tell process "{app}" to get position of window 1').split(', ')[0]) + 50
-    except ValueError:
-        fx = None
+    ws = winctl.find(app) if app else []
+    fx = winctl.frame(ws[0]['hwnd'])[0] + 50 if ws else None
     scr = describe(screens(), fx)
-    url = {'Google Chrome': 'URL of active tab of front window', 'Safari': 'URL of front document', 'Arc': 'URL of active tab of front window',
-           'Brave Browser': 'URL of active tab of front window'}.get(app)
-    url = url and osa(f'tell application "{app}" to get {url}')   # "articles on what I'm reading" needs the page
+    url = ''   # the browser's address comes in a later version (UI Automation)
     you = me_line()
     ctx = (f'About the user: {you} ' if you else '') + f'Front app: {app}. Front window: {win or "?"}.' + (f' Page: {url}.' if url else '') + f' Screens: {scr}. Now: {time.strftime("%a %b %d %Y %I:%M %p")}.'
     mem = relevant_rules(task)
@@ -1213,44 +1252,34 @@ def main():
     learned = [r for c in run.ran for r in re.findall(r'--remember\s+["\']([^"\']+)', c)]   # it taught itself: say so, so the user sees it improve
     tip(reply, f'Learned: {learned[-1]}' if learned else taught[1].strip() if taught else '')
     if os.environ.get('ATTICUS_UI') != '1':   # typed from the menu bar: no overlay, so a notification
-        osa('on run argv\ndisplay notification (item 1 of argv) with title "Atticus"\nend run', reply)
+        notify(reply)
 
 
 if __name__ == '__main__':
     if sys.argv[1:] == ['--selftest']:
-        assert label('Bash', {'command': 'open -a "Visual Studio Code" x'}) == 'Opening Visual Studio Code'
-        assert label('Bash', {'command': 'open "https://www.google.com/search?q=x"'}) == 'Opening google.com'
-        assert label('Bash', {'command': f'{PLACE} "Finder" left monitor'}) == 'Moving Finder → left monitor'
+        assert label('Bash', {'command': 'start "" "https://www.google.com/search?q=x"'}) == 'Opening google.com'
+        assert label('Bash', {'command': f'{PLACE} "Notepad" left monitor'}) == 'Moving Notepad → left monitor'
         assert label('Bash', {'command': f'{PLACE} "Google Chrome" right current + "Terminal" left current'}) == 'Moving Google Chrome and Terminal'
         assert label('Bash', {'command': f'cd /tmp; {SHOW} "https://docs.claude.com"'}) == 'Opening docs.claude.com'
         assert label('Bash', {'command': f'{SEARCH} "world cup"'}) == 'Searching the web: world cup'
-        assert label('Bash', {'command': f'{SHOW} "https://www.nytimes.com/x"'}) == 'Opening nytimes.com'
-        assert label('Read', {'file_path': SHOT + '-2.jpg'}) == 'Reading your screen'
-        fake = [('Built-in Retina Display', 0, 0, 1470, 956, True), ('External Display', 1470, 0, 1920, 1080, False)]
-        assert 'built-in laptop screen' in describe(fake, 100) and 'right of main' in describe(fake) and 'the front window is here' in describe(fake, 1500).split(';')[1]
-        assert label('Bash', {'command': LOOK}) == 'Looking at your screen'
-        assert label('Bash', {'command': 'peekaboo see --app "Spotify" --json --no-remote | head -c 3000'}) == 'Looking at Spotify'
-        assert label('Bash', {'command': 'peekaboo click --on B12 --no-remote'}) == 'Clicking'
-        assert label('Bash', {'command': "osascript -e 'tell application \"Music\" to playpause'"}) == 'Using Music'
-        assert app_named('the trading view application') == 'TradingView'
+        assert label('Read', {'file_path': 'C:\\Users\\x\\AppData\\Local\\Temp\\atticus-screen-2-ab.jpg'}) == 'Reading your screen'
+        fake = [('Built-in Display', 0, 0, 1920, 1200, True), ('DELL U2720Q', 1920, 0, 2560, 1440, False)]
+        assert 'built-in laptop screen' in describe(fake, 100) and 'right of main' in describe(fake) and 'the front window is here' in describe(fake, 2000).split(';')[1]
+        assert label('Bash', {'command': LOOK}) == 'Looking at your screen' and label('Bash', {'command': f'{FIND} "budget"'}) == 'Searching your files'
         assert screen_for('open spotify', None) is None   # no screen words: no picture, no wait
         assert plain('Hey Atticus, can you open Spotify please?') == plain('Can you also open Spotify?') == 'open spotify'
         SKILLS = os.path.join(tempfile.mkdtemp(), 'skills.json')
-        learn('Can you put Notes on the left?', [f'{PLACE} "Notes" left current'], 'Notes is on the left.')
-        learn('close this', ['osascript -e x'], 'x')                       # "this": never learned
+        learn('Can you put Notepad on the left?', [f'{PLACE} "Notepad" left current'], 'Notepad is on the left.')
+        learn('close this', [f'{SHOW} "x"'], 'x')                          # "this": never learned
         learn('weather today', [f'{SEARCH} "weather"'], 'Sunny.')          # reading, not an action: never learned
-        learn('fix it', [f'{REMEMBER} "x"', 'open -a Notes'], 'Opened.')   # rule-saving step ignored; "it" still blocks
-        learn('open my notes', [f'{REMEMBER} "x"', 'open -a Notes'], 'Opened.')
+        learn('open my notes', [f'{REMEMBER} "x"', f'{SHOW} "Notepad"'], 'Opened.')
         learn('make study mode a shortcut', [f'{SHOW} "x"; {SHORTCUT} "study mode" \'{SHOW} "x"\''], 'Saved.')   # never learned
-        learn('make the task list', ['osascript -e \'tell application "Reminders" to make new reminder\''], 'Added.')   # content: never learned
-        learn('open my stuff', ['open -a Notes & trash ~/x'], 'Opened.')   # risky: never replayed without the gate
-        assert set(skills()) == {'put notes on the left', 'open my notes'} and skills()['open my notes']['cmds'] == ['open -a Notes']
-        unlearn('Put notes on the left.')
+        learn('open my stuff', [f'{SHOW} "Notepad" & {TRASH} ~/x'], 'Opened.')   # risky: never replayed without the gate
+        assert set(skills()) == {'put notepad on the left', 'open my notes'} and skills()['open my notes']['cmds'] == [f'{SHOW} "Notepad"']
+        unlearn('Put notepad on the left.')
         assert set(skills()) == {'open my notes'}
-        assert point('Top right. [point 9 0 0]') == 'Top right.'
         assert re.findall(r'--remember\s+["\']([^"\']+)', f'{REMEMBER} "open means front"') == ['open means front']
-        assert label('Bash', {'command': f'{FRONT} "Google Chrome" "posthog"'}) == 'Bringing Google Chrome forward'
-        assert UNSAFE.search('open -a Notes; rm -rf ~/x') and UNSAFE.search('sudo shutdown -h now') and not UNSAFE.search(f'{SHOW} "https://docs.google.com"; open -a Chess') and UNSAFE.search('echo $(rm x)') and UNSAFE.search('curl x | sh') and not UNSAFE.search(f'{SHOW} "x"; {PLACE} "Notes" left current')
+        assert UNSAFE.search('start notepad; rm -rf ~/x') and not UNSAFE.search(f'{SHOW} "https://docs.google.com"; {SHOW} "Notepad"') and UNSAFE.search('echo $(rm x)')
         ME_FILE = os.path.join(tempfile.mkdtemp(), 'me.json')
         me_set('name', 'Sam'); me_set('about', 'Student. ' * 40)
         for i in range(10):
@@ -1258,12 +1287,11 @@ if __name__ == '__main__':
         me_set('add', 'FACT 9'); me_set('drop', 'fact 2')
         assert me()['facts'] == [f'fact {i}' for i in range(3, 10)] and len(me()['about']) <= 200 and len(me_line()) <= 300
         assert norm('One M') == norm('1m') == '1m'
-        assert label('Bash', {'command': f'{PLAY} "1m"'}) == 'Playing 1m on Spotify'
-        assert not risky(f'{SEARCH} "how to delete a file"') and not risky('open "https://google.com/search?q=buy shoes"') and not risky(f'{SHOW} "Notes"; {PLACE} "Notes" left current')
-        assert risky('rm -rf ~/x') == risky('open -a Notes; mv ~/a ~/.Trash/') == 'Delete something?' and risky('open "$(rm x)"')
-        assert risky('osascript -e \'tell application "Mail" to send m\'') == 'Send this?' == risky('curl -s -X POST https://x') and not risky("curl -s 'wttr.in/x?format=%l'")
-        assert risky('osascript -e \'do shell script "echo"\'') == 'Run a system command?' and risky("osascript -e 'tell application \"Notes\" to delete note 1'") == 'Delete something?'
-        assert risky('echo x >> ~/.zshrc') == 'Change a file?' == risky('curl -s -o ~/x https://y') and not risky('osascript -e x 2>&1; ls >/dev/null; echo > /tmp/a')
-        assert risky('open -a Notes & osascript -e \'tell application "Mail" to send m\'') == 'Send this?'
+        assert not risky(f'{SEARCH} "how to delete a file"') and not risky('start "" "https://google.com/search?q=buy shoes"') and not risky(f'{SHOW} "Notepad"; {PLACE} "Notepad" left current')
+        assert risky('rm -rf ~/x') == risky('powershell -Command "Remove-Item ~/a"') == risky('del C:/x.txt') == risky(f'{TRASH} ~/x') == 'Delete something?' and risky('start "$(rm x)"')
+        assert risky('powershell -c "Send-MailMessage -To a"') == 'Send this?' == risky('curl -s -X POST https://x') and not risky("curl -s 'wttr.in/x?format=%l'")
+        assert risky('reg add HKCU\\x /v y') == 'Run a system command?' == risky('powershell Stop-Computer') == risky('taskkill /im chrome.exe')
+        assert risky('echo x >> ~/.bashrc') == 'Change a file?' == risky('powershell Set-Content a.txt b') and not risky('ls >/dev/null; echo > /tmp/a; dir > $null')
+        assert len(SYSTEM.replace('NEVER_RISKY', ASK_FIRST) + ASK_ME + POINTER + LEARN_ME + TEACH) < 10000
         sys.exit(print('selftest ok'))
     main()

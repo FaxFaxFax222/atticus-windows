@@ -28,35 +28,31 @@ class BrainTests(unittest.TestCase):
         self.addCleanup(self.prefs.stop)
 
     def test_domain_dots_and_url_case_survive(self):
-        with patch.object(atticus, 'skills', return_value={}), patch.object(atticus.subprocess, 'run') as run:
+        with patch.object(atticus, 'skills', return_value={}), patch.object(atticus.os, 'startfile', create=True) as run:
             for request, url in [('Open github.com.', 'https://github.com'),
                                  ('Open github dot com', 'https://github.com'),
                                  ('Open https://github.com/SaarthurR/atticus?q=UI', 'https://github.com/SaarthurR/atticus?q=UI')]:
                 self.assertTrue(atticus.fast(request))
-                self.assertEqual(run.call_args.args[0], ['open', url])
+                self.assertEqual(run.call_args.args[0], url)
 
     def test_close_and_quit_do_not_restore_focus(self):
-        with patch.object(atticus, 'osa') as osa:
+        with patch.object(atticus.winctl, 'focus_app') as focus:
             for task in ['Close Spotify', 'quit Spotify', 'exit Spotify', 'close this window']:
                 atticus.restore_focus('Spotify', task, [])
-            osa.assert_not_called()
+            focus.assert_not_called()
 
     def test_focus_restore_only_addresses_existing_process(self):
-        with patch.object(atticus, 'osa') as osa:
+        with patch.object(atticus.winctl, 'focus_app') as focus, patch.object(atticus.winctl, 'launch') as launch:
             atticus.restore_focus('Spotify', 'what time is it', [])
-            script, app = osa.call_args.args
-            self.assertEqual(app, 'Spotify')
-            self.assertIn('if exists process (item 1 of argv) then', script)
-            self.assertIn('set frontmost of process', script)
-            self.assertNotIn('activate', script)
-            self.assertNotIn('tell application "Spotify"', script)
+            focus.assert_called_once_with('Spotify')   # an open window only: never a relaunch
+            launch.assert_not_called()
 
     def test_explicit_focus_and_front_commands_keep_their_destination(self):
-        with patch.object(atticus, 'osa') as osa:
+        with patch.object(atticus.winctl, 'focus_app') as focus:
             atticus.restore_focus('Notes', 'switch to Spotify', [])
             atticus.restore_focus('Notes', 'show me Spotify', [atticus.FRONT + ' Spotify'])
             atticus.restore_focus('Notes', 'open Spotify', [atticus.SHOW + ' Spotify'])
-            osa.assert_not_called()
+            focus.assert_not_called()
 
     def test_missing_display_does_not_send_wrong_screen(self):
         snap = unittest.mock.Mock()
@@ -111,7 +107,7 @@ class BrainTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as root, patch.object(atticus, 'DIR', root), \
              patch.multiple(atticus, licensed=lambda: True, ping=lambda: None,
                             fast=lambda _: 'Opened Spotify.', remember_turn=lambda *_: None), \
-             patch.object(atticus.os, 'setpgrp'), patch.object(atticus.signal, 'signal'), \
+             patch.object(atticus.signal, 'signal'), \
              patch('sys.argv', ['atticus.py', '--fast', 'open Spotify']), \
              patch('sys.stdout', io.StringIO()), patch.dict(os.environ, {'ATTICUS_LIVE': '1'}):
             atticus.main()
@@ -123,7 +119,7 @@ class BrainTests(unittest.TestCase):
     def test_confirmed_instant_command_skips_context_work(self):
         with patch.multiple(atticus, **{name: unittest.mock.DEFAULT for name in
                             ['start_claude', 'licensed', 'ping', 'fast', 'remember_turn', 'say', 'front', 'stop_claude']}) as mocks, \
-             patch.object(atticus.threading, 'Thread'), patch.object(atticus.os, 'setpgrp'), \
+             patch.object(atticus.threading, 'Thread'), \
              patch.object(atticus.signal, 'signal'), patch('sys.argv', ['atticus.py', '--wait']), \
              patch('sys.stdin', io.StringIO('Notes\topen Notes\n')), patch.dict(os.environ, {'ATTICUS_COMMIT': ''}):
             # Even without a CLI, --wait must read the request instead of treating its flag as a question.
@@ -218,7 +214,7 @@ atticus.main()
                 while not ready.exists() and time.monotonic() < deadline:
                     time.sleep(.01)
                 self.assertTrue(ready.exists())
-                p.terminate(); p.wait(timeout=3); time.sleep(.6)
+                atticus.winctl.kill_tree(p.pid); p.wait(timeout=3); time.sleep(.6)   # what Atticus.exe does: the whole tree
                 self.assertFalse(marker.exists())
             finally:
                 if p.poll() is None:
@@ -226,9 +222,10 @@ atticus.main()
 
     def test_cli_stderr_cannot_block_the_stream(self):
         with tempfile.TemporaryDirectory() as root:
-            fake = Path(root) / 'claude'
-            fake.write_text(f'#!{sys.executable}\nimport sys\nsys.stderr.write("x" * 1000000)\nprint(\'{json.dumps({"type": "result", "result": "Ready."})}\')\n')
-            fake.chmod(0o755)
+            script = Path(root) / 'claude.py'
+            script.write_text(f'import sys\nsys.stderr.write("x" * 1000000)\nprint(\'{json.dumps({"type": "result", "result": "Ready."})}\')\n')
+            fake = Path(root) / 'claude.cmd'
+            fake.write_text(f'@"{sys.executable}" "{script}"\r\n')
             previous_handler = signal.getsignal(signal.SIGTERM)
             try:
                 with patch.object(atticus.shutil, 'which', return_value=str(fake)), \
@@ -253,10 +250,9 @@ class WatchAndBudgetTests(unittest.TestCase):
             self.addCleanup(p.stop)
 
     def fake_app(self, out, code=0):
-        f = tempfile.NamedTemporaryFile('w', suffix='.sh', delete=False)
-        f.write(f'#!/bin/sh\nprintf %s "{out}"\nexit {code}\n')
+        f = tempfile.NamedTemporaryFile('w', suffix='.cmd', delete=False)
+        f.write(f'@echo off\r\necho {out}\r\nexit /b {code}\r\n' if out else f'@exit /b {code}\r\n')
         f.close()
-        os.chmod(f.name, 0o755)
         self.addCleanup(os.remove, f.name)
         return patch.object(atticus, 'APP', f.name)
 
@@ -288,17 +284,11 @@ class WatchAndBudgetTests(unittest.TestCase):
         self.assertEqual(atticus.label('Bash', {'command': f'{atticus.PICK} "Which?" "a" "b"'}), 'Asking you which one')
         self.assertFalse(atticus.risky(f'{atticus.PICK} "Which file?" "~/delete-me.txt" "~/send.pdf"'))
 
-    def test_place_by_title_never_falls_back_to_the_front_window(self):
-        calls = []
-        def osa(script, *args):   # System Events can't see it, so the app's own window list answers
-            calls.append(script)
-            return '0, 0, 800, 600' if 'get bounds' in script else ''
-        with patch.object(atticus, 'osa', side_effect=osa), patch.object(atticus.subprocess, 'run') as run, \
-             patch.object(atticus, 'screens', return_value=[('Built-in', 0, 0, 1470, 956, True), ('Acer', 1470, 0, 1920, 1080, False)]):
-            run.return_value.returncode = 0
-            atticus.place('Preview', 'full', 'laptop', 'Ch4-Study-Guide copy.pdf')
-        app = [c for c in calls if 'get bounds' in c] + [run.call_args.args[0][2]]
-        self.assertTrue(all('whose name contains "Ch4-Study-Guide copy"' in c and 'window 1' not in c for c in app))
+    def test_window_rects_fill_halves_and_center_within_the_work_area(self):
+        area = (-2560, 0, 2560, 1392)   # a monitor left of the main one
+        self.assertEqual(atticus.winctl.rect_for('left', area, (800, 600)), (-2560, 0, 1280, 1392))
+        self.assertEqual(atticus.winctl.rect_for('right', area, (800, 600)), (-1280, 0, 1280, 1392))
+        self.assertEqual(atticus.winctl.rect_for('center', area, (3000, 600)), (-2560, 396, 2560, 600))   # never wider than the screen
 
     def test_set_flips_a_switch_by_name_never_safe_mode(self):
         self.assertIn('askMe', atticus.switches())

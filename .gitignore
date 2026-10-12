@@ -31,3 +31,6 @@ CLAUDE.local.md
 index.html
 docs/atticus-film.mp4
 docs/film-poster.png
+.venv/
+win/Atticus/bin/
+win/Atticus/obj/

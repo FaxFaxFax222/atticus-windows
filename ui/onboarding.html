@@ -1,6 +1,6 @@
 <!doctype html>
 <html><head><meta charset="utf-8">
-<!-- Atticus first-run window. Atticus.swift loads this (orbs.js goes in place of the marker), calls ob.set({...}) every second
+<!-- Atticus first-run window. Atticus.exe loads this (orbs.js goes in place of the marker), calls ob.set({...}) every second
      with which permissions are on, and gets {do:'grant', id} / {do:'done'} back. -->
 <style>
   :root {
@@ -124,14 +124,14 @@
 <section class="page" id="welcome">
   <div id="orbwrap" class="r"><canvas id="orb"></canvas></div>
   <h1 class="r">Meet Atticus</h1>
-  <p class="sub r" id="welcome-talk">Hold the shortcut, say what you need, let go. Your Mac does the rest.</p>
-  <div class="keys r"><div class="key" id="k1">⌃</div><div class="key" id="k2">⌥</div><div class="key wide" id="k3">Space</div></div>
+  <p class="sub r" id="welcome-talk">Hold the shortcut, say what you need, let go. Your PC does the rest.</p>
+  <div class="keys r"><div class="key" id="k1">Ctrl</div><div class="key" id="k2">Alt</div><div class="key wide" id="k3">Space</div></div>
   <button class="btn r" data-go="perms">Get Started</button>
 </section>
 
 <section class="page" id="perms">
   <h2 class="r">Give Atticus a hand</h2>
-  <p class="sub r">macOS asks once for each one. You can change them any time in System Settings.</p>
+  <p class="sub r">Three things, once. You can change them any time in Atticus Settings.</p>
   <div id="list" class="r"></div>
   <div id="count" class="r"></div>
   <button class="btn quiet r" id="next" data-go="try">Skip for Now</button>
@@ -140,7 +140,7 @@
 <section class="page" id="try">
   <h2 class="r">Try it now</h2>
   <p class="sub r" id="try-talk">Hold the keys anywhere, say anything, then let go. Simple commands can run as you speak; AI actions wait for confirmed words.</p>
-  <div class="keys big r"><div class="key" id="t1">⌃</div><div class="key" id="t2">⌥</div><div class="key wide" id="t3">Space</div></div>
+  <div class="keys big r"><div class="key" id="t1">Ctrl</div><div class="key" id="t2">Alt</div><div class="key wide" id="t3">Space</div></div>
   <div id="hint" class="r">Waiting for you…</div>
   <button class="btn quiet r" data-go="done">Skip</button>
 </section>
@@ -179,16 +179,13 @@
   const P = [
     ['claude', 'Claude Plan', 'Checking your Claude sign-in…', '#d97757', '<path d="M12 3v18M3 12h18M5.6 5.6l12.8 12.8M18.4 5.6L5.6 18.4"/>'],
     ['mic', 'Microphone', 'Listens when you start a voice request.', '#ff9f0a', '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/>'],
-    ['speech', 'Speech Recognition', 'Turns your words into text, on this Mac.', '#8e8e93', '<path d="M4 10v4M8 7v10M12 4v16M16 8v8M20 11v2"/>'],
-    ['ax', 'Accessibility', 'Moves windows and clicks buttons for you.', '#0a84ff', '<circle cx="12" cy="4.5" r="1.6"/><path d="M5 8.5l7 1.5 7-1.5M12 10v4.5M12 14.5l-3 6M12 14.5l3 6"/>'],
-    ['screen', 'Screen Recording', 'Looks at your screen when you say “this”.', '#bf5af2', '<rect x="3" y="4.5" width="18" height="12" rx="2"/><path d="M8.5 20h7M12 16.5V20"/>'],
-    ['auto', 'Automation', 'Pick the apps Atticus can control, all at once.', '#636366', '<circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1"/>'],
+    ['speech', 'Speech Model', 'Turns your words into text on this PC. About 150 MB, once.', '#8e8e93', '<path d="M4 10v4M8 7v10M12 4v16M16 8v8M20 11v2"/>'],
   ];
   $('list').innerHTML = P.map(([id, name, why, color, svg], i) => `
     <div class="row" id="p-${id}" style="transition-delay:${.25 + i * .06}s">
       <div class="ic" style="background:${color}"><svg viewBox="0 0 24 24">${svg}</svg></div>
       <div class="txt"><b>${name}</b><span>${why}</span></div>
-      <button class="allow" data-id="${id}">Allow</button>
+      <button class="allow" data-id="${id}">${id === 'speech' ? 'Download' : 'Allow'}</button>
       <svg class="check" viewBox="0 0 22 22"><circle cx="11" cy="11" r="11"/><path d="M6.5 11.3l3 3 6-6.3"/></svg>
     </div>`).join('');
   document.querySelectorAll('.allow').forEach(b => b.onclick = () => {
@@ -200,7 +197,7 @@
   let planOK = false, last = null;
   window.ob = {
     mode(toggle) {
-      $('welcome-talk').textContent = (toggle ? 'Press the shortcut, speak, press again to send.' : 'Hold the shortcut, speak, release to send.') + ' Your Mac does the rest.';
+      $('welcome-talk').textContent = (toggle ? 'Press the shortcut, speak, press again to send.' : 'Hold the shortcut, speak, release to send.') + ' Your PC does the rest.';
       $('try-talk').textContent = (toggle ? 'Press the shortcut anywhere. Say what you need, then press again to send.' : 'Hold the keys anywhere, say what you need, then let go.') + ' Simple commands can run as you speak; AI actions wait for confirmed words.';
       $('practice-talk').textContent = toggle ? 'Try a few. Press to talk, press again to send. Esc cancels.' : 'Try a few. Hold the keys, say it, let go. Esc cancels.';
     },
@@ -215,6 +212,10 @@
       k.forEach((id, i) => setTimeout(() => { $(id).classList.remove('lit', 'down'); $(id).classList.add('yes'); }, i * 70));
       { $('hint').textContent = 'That’s it. Atticus is listening.'; $('hint').classList.add('yes'); }
       setTimeout(() => go('done'), 1500);
+    },
+    progress(id, p) {   // the speech model downloading
+      const row = $('p-' + id); if (!row) return;
+      row.querySelector('.allow').textContent = Math.round(p * 100) + '%';
     },
     plan(c) {   // Claude Code: installed, signed in, paid plan? The row says which, the button fixes it
       planOK = !!c.ok;

@@ -1,129 +1,79 @@
-<p align="center"><img src="docs/banner.png" alt="Atticus. Your whole Mac, one sentence away." width="100%"></p>
+# Atticus for Windows
 
-<p align="center">
-  Hold <kbd>⌃ control</kbd> <kbd>⌥ option</kbd> <kbd>space</kbd>, say what you need, let go.<br>
-  Atticus moves your windows, finds your files, reads your screen and gets it done.
-</p>
+Hold <kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>Space</kbd>, say what you need, let go.
+Atticus moves your windows, finds your files, reads your screen and gets it done.
 
-<p align="center">
-  <b>⚡ Fast</b> &nbsp;·&nbsp; <b>🔑 No API key</b> &nbsp;·&nbsp; <b>🧠 Remembers you</b> &nbsp;·&nbsp; <b>Free and open source</b>
-</p>
+A Windows port of [SaarthurR/atticus-mac](https://github.com/SaarthurR/atticus-mac). Same brain, same overlay, same idea:
 
-- **Fast.** Simple asks skip the AI: an app opens in 0.08 s. Ask for an action once and Atticus learns it, so next time it runs in a blink, with no AI and for free.
-- **No API key.** It runs on the Claude Pro or Max plan you already have, through Claude Code. Nothing to sign up for, no key to paste, no extra bill.
-- **Remembers you.** Say "remember…" and every ask after that knows it. It picks up who you are (your name, your apps) and fixes its own mistakes when you correct it.
-
-<p align="center">
-  <img alt="macOS" src="https://img.shields.io/badge/macOS-1d1d1f?style=for-the-badge&logo=apple&logoColor=white">
-  <img alt="Swift" src="https://img.shields.io/badge/Swift-1d1d1f?style=for-the-badge&logo=swift&logoColor=white">
-  <img alt="Claude" src="https://img.shields.io/badge/Claude_Haiku-1d1d1f?style=for-the-badge&logo=anthropic&logoColor=white">
-  <img alt="Cost" src="https://img.shields.io/badge/~0.14%C2%A2_per_ask-1d1d1f?style=for-the-badge">
-</p>
-
-<br>
-
-https://github.com/user-attachments/assets/e3444422-02e8-4dd7-bb44-d39f2b0f2bef
-
-<br>
+- **Fast.** Simple asks skip the AI: "open Notepad", "Chrome on the left of my monitor", "search for pizza near me". Ask for an action once and Atticus learns it, so next time it runs with no AI and for free.
+- **No API key.** It runs on the Claude Pro or Max plan you already have, through Claude Code.
+- **Remembers you.** Say "remember…" and every ask after that knows it. It picks up who you are and fixes its own mistakes when you correct it.
+- **Private ears.** Whisper turns your voice into text on your PC. Audio never leaves it.
 
 ## Just ask
 
 | You say | Atticus |
 |---|---|
 | *"Code on my big screen, Chrome and Terminal on the laptop."* | Arranges three windows across two displays. |
-| *"Open Spotify."* · *"Terminal on the left."* | Runs instantly, with no AI at all. |
-| *"Find my notes about the Tokyo trip."* | Searches your files by what's inside them, opens the match on your other screen. |
+| *"Open Spotify."* · *"Notepad on the left."* | Runs instantly, with no AI at all. |
+| *"Find my notes about the Tokyo trip."* | Searches your files (Windows Search) and opens the match. |
 | *"What's wrong with this code?"* | Looks at your screen and answers in a line. |
-| *"Summarize this article in three bullets."* | Reads the page for you. |
 | *"Reply: sounds good, see you at 7."* | Types it into the app you're in. It never sends. |
-| *"Play my late night coding playlist on Spotify."* | Plays it in a second, no clicks. Any song, artist or playlist. |
+| *"Play my late night coding playlist on Spotify."* | Plays it, no clicks. |
 | *"When I say focus mode, close Slack and open my to-do list."* | Remembers it. Next time, two words do it all. |
-
-<p align="center"><img src="docs/demo.gif" alt="Atticus arranging windows across two screens" width="820"></p>
-
-## Why Atticus
-
-<table>
-<tr>
-<td width="33%" valign="top"><h3>Fast</h3>Opening apps and sites, moving windows, web searches and music skip the AI entirely (an app opens in 0.08 s). Actions you ask for once (opening apps, moving windows, playing music) become learned shortcuts: "Open Calculator and Chess" went from 5.5 s to 0.4 s, with no AI.</td>
-<td width="33%" valign="top"><h3>No API key</h3>Runs on the Claude plan you already have, through <code>claude -p</code>. About 0.14¢ of plan usage per ask (~700 asks for $1 at API list rates). Atticus itself is free.</td>
-<td width="33%" valign="top"><h3>Remembers you</h3>"Remember: open means bring it to the front." Saved rules go with every ask. It learns lasting facts about you (name, city, favorite apps), and when you correct it, it saves a rule so it gets it right next time. Edit all of it in Settings.</td>
-</tr>
-<tr>
-<td valign="top"><h3>Private ears</h3>Apple's on-device speech turns your voice into text. Audio never leaves your Mac.</td>
-<td valign="top"><h3>Your whole Mac</h3>Apps, windows, files, settings, the web and the screen, with <a href="https://github.com/openclaw/Peekaboo">Peekaboo</a> for clicking inside any app.</td>
-<td valign="top"><h3>Safe by default</h3>Safe mode runs the AI's commands in Claude Code's sandbox: they can only write to a scratch folder. Before anything deletes, sends, buys or changes a file, Atticus asks you first. <code>rm</code>, <code>sudo</code>, disk tools and shutdown are always blocked. Every exact command is in the ask log.</td>
-</tr>
-</table>
-
-<details>
-<summary><b>How the shortcut and the box work</b></summary>
-<br>
-
-Choose **Hold to talk** or **Press to toggle** in Settings → General → Shortcut behavior. Hold mode sends when you release. Toggle mode starts on the first press and sends on the second; pauses keep listening. Pressing the shortcut while Atticus answers stops it; during spoken playback it stops the voice. Esc cancels listening without sending. Toggle recordings reach a review screen after 60 seconds, rather than sending automatically. Closing the overlay or pausing Atticus stops its microphone, workers and voice.
-
-Click any answer to copy it, including earlier answers still shown in the box. Click your request to edit and ask again, or press ↑ in an empty typing box to recall the latest request. The overlay stays within your display when resized and respects Reduce Motion.
-
-Apple's final transcript confirms each voice request before AI tools or learned shortcuts run. AI reasoning can start during a pause, but its tools wait for confirmation. If speech finalization takes too long, Atticus offers the partial text for review. Instant commands still skip the AI entirely. Supported built-in commands run mid-sentence, before you send, with Instant commands and Act while I’m talking on (Settings → Intelligence). Learned shortcuts wait for confirmed words.
-
-</details>
+| *"Tell me when the download finishes."* | Watches that window with Windows' own OCR, no AI while it waits. |
 
 ## Install
 
 You need:
-- **macOS 26** or later (Atticus uses Apple's new on-device speech)
+- **Windows 11** (Windows 10 2004+ works, without the glass look)
 - **A paid Claude plan** (Pro or Max) and [Claude Code](https://claude.com/claude-code). No Claude Code yet? The setup window installs it and signs you in.
-- Apple's command line tools: `xcode-select --install`
-- Optional: [Peekaboo](https://github.com/openclaw/Peekaboo) (see its install steps) so Atticus can click inside apps
+- Git for Windows and Python 3.11+ (the installer gets them with winget if missing)
 
-Paste this in Terminal:
+Paste this in PowerShell:
 
 ```
-curl -fsSL https://raw.githubusercontent.com/SaarthurR/atticus-mac/main/install.sh | bash
+irm https://raw.githubusercontent.com/FindlayHi/atticus-windows/main/install.ps1 | iex
 ```
 
-It checks your Mac, downloads Atticus to `~/.atticus`, builds `~/Applications/Atticus.app`, and opens it. Atticus starts at login and updates itself from there (turn that off in Settings → About & Updates).
+It downloads Atticus to `%USERPROFILE%\.atticus`, builds `%LOCALAPPDATA%\Programs\Atticus\Atticus.exe` (the .NET 10 SDK is fetched per user if missing, no admin), and opens it. Atticus starts at login (Settings → General).
 
-Working on the code instead? Clone the repo anywhere and run `./build.sh` after each change.
+Working on the code instead? Clone anywhere and run `powershell -ExecutionPolicy Bypass -File .\build.ps1` after each change.
 
-The first launch opens a setup window. It checks your Claude plan, then asks for each macOS permission.
-After that, Atticus lives in the menu bar. Open it from Spotlight (⌘Space, "Atticus") for Settings: shortcut, sounds, model, speed, screen, memory and usage.
-If you sign out of Claude later, the setup window comes back by itself.
-To see it again: `defaults delete com.atticus.app onboarded`, then restart the app.
+The first launch opens a setup window: Claude sign-in, the microphone, and the speech model (~150 MB, once). After that Atticus lives in the tray. Open it from Start ("Atticus") for Settings.
 
-Test: `python3 atticus.py --selftest` on macOS, plus `python3 -m unittest discover -s tests -v` for offline regressions. After building, `~/Applications/Atticus.app/Contents/MacOS/Atticus --selftest` checks native transcript matching without opening the app. Node, when installed, also checks embedded JavaScript syntax. For the UI interaction checks, run `python3 -m http.server 8765 --bind 127.0.0.1` from the repo and open `http://127.0.0.1:8765/tests/ui.html`; it uses a mock native bridge and makes no Mac actions or AI calls.
+Remove: quit Atticus from the tray, then delete `%LOCALAPPDATA%\Programs\Atticus`, `%LOCALAPPDATA%\Atticus`, `%APPDATA%\Atticus` (your settings and history), the Start menu shortcut, and the `Atticus` value under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`.
 
-Remove: `launchctl bootout gui/$(id -u)/com.atticus.app`, then delete `~/Applications/Atticus.app`, `~/.atticus`, `~/.config/atticus` (your settings and history) and `~/Library/LaunchAgents/com.atticus.app.plist`.
+## How it works
 
-## Watch for me
+- `win/Atticus/` (C#, WinForms + WebView2): the tray app. A low-level keyboard hook for the shortcut, the microphone and Whisper (`Speech.cs`), the overlay (`Overlay.cs`, a port of the Mac app's `App` class), Settings and setup windows, window OCR for watches (`WindowText.cs`).
+- `atticus.py`: the brain, kept close to upstream so fixes merge. Instant commands, learned shortcuts, the system prompt, and `claude -p --model haiku` runs.
+- `winctl.py`: the Windows hands that replace osascript, mdfind, screencapture and pbpaste: displays (with laptop vs monitor from the display configuration), window placement, Start-menu apps, clipboard and typing, screenshots, Windows Search, toasts, Recycle Bin.
+- `ui/`: the upstream overlay, Settings and setup pages. A small shim maps WKWebView's `webkit.messageHandlers` onto WebView2, so the pages run unchanged apart from Windows wording.
 
-Say "tell me when Codex is done" or "watch this page until it says shipped". Atticus sets it up once, then checks every 5 seconds on your Mac with no AI, so waiting is free. When it fires you get a notification, and it runs a follow-up if you asked for one. A window must stay open on this desktop (covered is fine). Coding agents like Codex are watched through their own log, with no screen at all. Say "stop watching" to cancel.
+The AI's Bash is Git Bash. Its helpers are one short command, `atticus --place …`, `atticus --find …`, from a two-line script Atticus puts on its PATH.
+
+## Safety
+
+Safe mode (on by default) shows an Allow card before anything deletes, sends, buys, changes a file or runs a system command (`Remove-Item`, `reg add`, `taskkill`, `Stop-Computer`…). `rm`, `del`, `format`, `diskpart` and shutdown are always blocked. Deletes go to the Recycle Bin. Every exact command is in the ask log.
+
+Unlike the Mac version, there is no sandbox: Claude Code's sandbox isn't available on native Windows, so on Windows safe mode is the Allow check alone.
+
+## Not on Windows yet
+
+- Clicking inside apps (Peekaboo on the Mac). Next: UI Automation.
+- The browser's current address as context, and file previews in the "which one?" card.
+- Reminders and Notes scripting: notes go to `Documents\Atticus Notes.md`, timed reminders use a watch.
+- Self-update: run `install.ps1` again to update.
+
+## Test
+
+`python -m unittest discover -s tests -v` and `python atticus.py --selftest` (with `PYTHONUTF8=1`), plus `Atticus.exe --selftest` after building. `Atticus.exe --transcribe <16 kHz wav>` runs a file through the speech path; `Atticus.exe --text "<app>" [title words]` prints what OCR reads in that window. `ATTICUS_DEMO="<request>"` runs one request at launch without the mic; `ATTICUS_CAPTURABLE=1` lets screenshots see the box (it hides from capture by default).
 
 ## Budget
 
-Atticus has to stay fast and nearly free, so new features must fit under these limits:
-
-- Instant commands: no AI, $0.
-- AI asks: median under $0.002 and 6 s over the last 50 (Oct 10, 2026: $0.00095, 5.0 s). Check with `python3 atticus.py --budget`.
-- System prompt: under 10,000 characters with every option on. Every ask pays for it, and a test enforces it.
-- Anything that waits or runs in the background: $0 while it waits. AI only to set it up and to act at the end.
-
-## Usage count
-
-Once a day, Atticus sends one random ID (made on your Mac, not tied to you) to PostHog, so I can see how many people use it. It never sends your name, your asks or your screen. Turn it off in Settings → Account & Access → Count me as a user.
-
-## Files
-
-- `Atticus.swift`: the app (hotkey, speech, overlay, onboarding window)
-- `atticus.py`: the brain (fast commands, system prompt, helpers for windows, web and screen)
-- `ui/ui.html`, `ui/onboarding.html`, `ui/settings.html`: the overlay, the welcome flow, and Settings
-- `ui/AppIcon.icns`: the app icon
-- `ui/orbs.js`: the [thinking-orbs](https://github.com/Jakubantalik/thinking-orbs) engine (MIT, Jakub Antalik)
+Same limits as upstream: instant commands $0; AI asks a median under $0.002 and 6 s over the last 50 (`python atticus.py --budget`); a system prompt under 10,000 characters with every option on (a test enforces it); $0 while anything waits.
 
 ## License
 
-MIT. See `LICENSE`. `ui/orbs.js` is from [thinking-orbs](https://github.com/Jakubantalik/thinking-orbs), also MIT.
-
-## Contributing
-
-Run regressions with a scratch `ATTICUS_DIR` and use `tests/ui.html` and `tests/settings.html` for mock-bridge UI checks. Keep personal agent settings, credentials and runtime state out of commits. Anonymous usage telemetry is disabled unless `ATTICUS_POSTHOG_KEY` is supplied through the environment; no key is embedded in the source.
+MIT. See `LICENSE`. Original Atticus by SaarthurR. `ui/orbs.js` is from [thinking-orbs](https://github.com/Jakubantalik/thinking-orbs), also MIT. Speech by [whisper.cpp](https://github.com/ggerganov/whisper.cpp) through [Whisper.net](https://github.com/sandrohanea/whisper.net) (MIT).

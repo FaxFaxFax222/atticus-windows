@@ -1,6 +1,6 @@
 <!doctype html>
 <html><head><meta charset="utf-8">
-<!-- Atticus settings. Atticus.swift calls st.load({prefs, state}) and gets {do:'set', k, v} and other actions back. -->
+<!-- Atticus settings. Atticus.exe calls st.load({prefs, state}) and gets {do:'set', k, v} and other actions back. -->
 <style>
   :root {
     --fg: #1d1d1f; --fg2: #6e6e73; --fg3: #8e8e93; --card: rgba(255,255,255,.66); --line: rgba(0,0,0,.08);
@@ -169,6 +169,7 @@
   <section id="general" class="on">
     <h1>General</h1>
     <p class="lede">Your shortcut. Your way to talk.</p>
+    <style>nav button[data-s="apps"], #apps { display: none !important; }</style>
     <h3>Shortcut</h3>
     <div class="shortcut" id="shortcut">
       <div class="caps" id="caps" aria-live="polite"></div>
@@ -181,13 +182,13 @@
     </div>
     <h3>Atticus</h3>
     <div class="group">
-      <div class="row"><div class="t"><b>Open at login</b><span>Ready the moment your Mac is.</span></div><label class="sw"><input type="checkbox" data-k="login"></label></div>
+      <div class="row"><div class="t"><b>Open at login</b><span>Ready the moment Windows is.</span></div><label class="sw"><input type="checkbox" data-k="login"></label></div>
       <div class="row"><div class="t"><b>Pause Atticus</b><span>The shortcut does nothing until you turn this off.</span></div><label class="sw"><input type="checkbox" data-k="paused"></label></div>
-      <div class="row"><div class="t"><b>Show in menu bar</b><span>Hidden? Open Atticus from Spotlight to get back here.</span></div><label class="sw"><input type="checkbox" data-k="menuIcon"></label></div>
+      <div class="row"><div class="t"><b>Show in the taskbar tray</b><span>Hidden? Open Atticus from the Start menu to get back here.</span></div><label class="sw"><input type="checkbox" data-k="menuIcon"></label></div>
     </div>
     <h3>Answers</h3>
     <div class="group">
-      <div class="row"><div class="t"><b>Read answers aloud</b><span>In your Mac’s system voice. Esc stops it.</span></div><label class="sw"><input type="checkbox" data-k="speak"></label></div>
+      <div class="row"><div class="t"><b>Read answers aloud</b><span>In Windows’ voice. Esc stops it.</span></div><label class="sw"><input type="checkbox" data-k="speak"></label></div>
       <div class="row"><div class="t"><b>Copy answers automatically</b><span>Every answer lands on your clipboard, ready to paste.</span></div><label class="sw"><input type="checkbox" data-k="autoCopy"></label></div>
       <div class="row"><div class="t"><b>Tips</b><span>Once in a while, a small tip under the answer. After a miss, how to teach Atticus to do it right.</span></div><label class="sw"><input type="checkbox" data-k="tips"></label></div>
       <div class="row"><div class="t"><b>Ask me when unsure</b><span>When more than one thing fits, Atticus shows you the choices in the box instead of guessing.</span></div><label class="sw"><input type="checkbox" data-k="askMe"></label></div>
@@ -232,8 +233,8 @@
     <h1>Screen &amp; Windows</h1>
     <p class="lede">What Atticus can see, and where things open.</p>
     <div class="group">
-      <div class="row"><div class="t"><b>Look at my screen</b><span>Automatic: only when you say “this”, “my screen”, “this page” and the like. Pictures stay on your Mac until sent with that one ask.</span></div><div class="seg" data-k="screen"><button data-v="auto">Automatic</button><button data-v="never">Never</button></div></div>
-      <div class="row"><div class="t"><b>Hide from screen sharing</b><span>On Zoom, Meet or a recording, others see your screen but not the Atticus box.</span></div><label class="sw"><input type="checkbox" data-k="hideWhenSharing"></label></div>
+      <div class="row"><div class="t"><b>Look at my screen</b><span>Automatic: only when you say “this”, “my screen”, “this page” and the like. Pictures stay on your PC until sent with that one ask.</span></div><div class="seg" data-k="screen"><button data-v="auto">Automatic</button><button data-v="never">Never</button></div></div>
+      <div class="row"><div class="t"><b>Hidden from screen sharing</b><span>On Zoom, Meet or a recording, others see your screen but never the Atticus box. Atticus’s own screenshots leave it out too.</span></div></div>
       <div class="row"><div class="t"><b>Open apps on</b><span>The other screen keeps you where you are, but takes a second or two longer.</span></div><div class="seg" data-k="openOn"><button data-v="here">This screen</button><button data-v="other">Other screen</button></div></div>
     </div>
   </section>
@@ -285,20 +286,18 @@
     </div>
     <h3>Safety</h3>
     <div class="group">
-      <div class="row"><div class="t"><b>Safe mode</b><span>AI commands use a scratch folder. Deletes, sends, purchases and commands requesting access outside it need your approval.</span></div><label class="sw"><input type="checkbox" data-k="safe"></label></div>
+      <div class="row"><div class="t"><b>Safe mode</b><span>Deletes, sends, purchases, file changes and system commands wait for your Allow. (Windows has no sandbox for Claude Code, so this check is the whole of safe mode.)</span></div><label class="sw"><input type="checkbox" data-k="safe"></label></div>
       <div class="row"><div class="t"><b>Count me as a user</b><span>Once a day, sends a random ID so the maker knows how many people use Atticus. Never your name, your asks or your screen.</span></div><label class="sw"><input type="checkbox" data-k="stats"></label></div>
     </div>
     <h3>Permissions</h3>
     <div class="group" id="perms">
       <div class="row"><div class="t"><b>Microphone</b><span>Hears you while you hold the keys.</span></div><span class="pill ok">Allowed</span><button class="btn" data-g="mic">Allow</button></div>
-      <div class="row"><div class="t"><b>Speech Recognition</b><span>Turns your words into text, on this Mac.</span></div><span class="pill ok">Allowed</span><button class="btn" data-g="speech">Allow</button></div>
-      <div class="row"><div class="t"><b>Accessibility</b><span>Moves windows and clicks buttons for you.</span></div><span class="pill ok">Allowed</span><button class="btn" data-g="ax">Allow</button></div>
+      <div class="row"><div class="t"><b>Speech Recognition</b><span>Whisper turns your words into text on this PC (a one-time ~150 MB download).</span></div><span class="pill ok">Ready</span><button class="btn" data-g="speech">Download</button></div>
       <div class="row"><div class="t"><b>Screen Recording</b><span>Looks at your screen when you say “this”.</span></div><span class="pill ok">Allowed</span><button class="btn" data-g="screen">Allow</button></div>
-      <div class="row"><div class="t"><b>Apps</b><span>Which apps Atticus can control.</span></div><button class="btn" onclick="st.tab('apps')">Choose</button></div>
     </div>
     <h3>Atticus</h3>
     <div class="group">
-      <div class="row"><div class="t"><b>Quit Atticus</b><span>Open it again from Spotlight or Applications.</span></div><button class="btn red" data-do="quit">Quit</button></div>
+      <div class="row"><div class="t"><b>Quit Atticus</b><span>Open it again from the Start menu.</span></div><button class="btn red" data-do="quit">Quit</button></div>
     </div>
   </section>
 
@@ -340,7 +339,7 @@
   document.querySelectorAll('[data-do]').forEach(b => b.onclick = () => post({ do: b.dataset.do }));
 
   // Shortcut: Atticus.swift records the keys; the label is like "⌃⌥Space" (modifier symbols, then the key)
-  const capsOf = label => { const m = label.match(/^([⌃⌥⇧⌘]*)(.*)$/); return [...m[1]].concat(m[2] ? [m[2]] : []); };
+  const capsOf = label => label.includes('+') || /^[A-Z]/.test(label) ? label.split('+') : (m => [...m[1]].concat(m[2] ? [m[2]] : []))(label.match(/^([⌃⌥⇧⌘]*)(.*)$/));
   const showCaps = (label, hint) => $('caps').innerHTML = capsOf(label).map(c => `<i class="cap${c.length > 2 ? ' wide' : ''}">${c}</i>`).join('')
     + (hint ? `<span class="hint">${hint}</span>` : '');
   let recording = false;
@@ -358,7 +357,8 @@
   };
   document.addEventListener('pointerdown', e => { if (!e.target.closest('#change')) cancelRecord(); });
 
-  const SOUNDS = ['None', 'Pop', 'Tink', 'Glass', 'Ping', 'Purr', 'Bottle', 'Blow', 'Hero', 'Funk', 'Morse', 'Submarine', 'Frog', 'Sosumi', 'Basso'];
+  let SOUNDS = ['None', 'Speech On', 'Speech Off', 'Windows Notify System Generic', 'Windows Ding', 'chimes', 'notify', 'tada'];
+  const fillSounds = () => document.querySelectorAll('select').forEach(s => { s.innerHTML = SOUNDS.map(n => `<option>${n}</option>`).join(''); s.value = P[s.dataset.k]; });
   document.querySelectorAll('select').forEach(s => {
     s.innerHTML = SOUNDS.map(n => `<option>${n}</option>`).join('');
     s.onchange = () => { set(s.dataset.k, s.value); if (s.value !== 'None') post({ do: 'preview', sound: s.value }); };
@@ -367,14 +367,14 @@
   document.querySelectorAll('.sw input').forEach(i => i.onchange = () => set(i.dataset.k, i.checked));
   document.querySelectorAll('input[type=range]').forEach(r => {
     r.oninput = () => { P[r.dataset.k] = +r.value; paint(); };
-    r.onchange = () => { set(r.dataset.k, +r.value); if (r.dataset.k === 'volume') post({ do: 'preview', sound: P.soundDone === 'None' ? 'Glass' : P.soundDone }); };
+    r.onchange = () => { set(r.dataset.k, +r.value); if (r.dataset.k === 'volume') post({ do: 'preview', sound: P.soundDone === 'None' ? 'Windows Ding' : P.soundDone }); };
   });
 
   const WHY = { haiku: 'Fastest, about 2 s an ask. Right for almost everything.', sonnet: 'Smarter for tricky asks. A few seconds slower; uses more of your plan.',
                 opus: 'Most capable. Slowest; uses your plan fastest.' };
   function paint() {
     if (!recording) showCaps(P.hotkeyLabel);
-    $('reset').style.display = P.hotkeyLabel === '⌃⌥Space' ? 'none' : '';
+    $('reset').style.display = (P.hotkeyLabel === 'Ctrl+Alt+Space' || P.hotkeyLabel === '⌃⌥Space') ? 'none' : '';
     document.querySelectorAll('.seg[data-k]').forEach(g => g.querySelectorAll('button').forEach(b => {
       const on = P[g.dataset.k] === b.dataset.v; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on);
     }));
@@ -484,6 +484,7 @@
     },
     allowDone() { asking = 0; post({ do: 'apps' }); },
     load(d) {
+      if (d.sounds && d.sounds.length) { SOUNDS = d.sounds; P = d.prefs || P; fillSounds(); }
       P = {talkMode: 'hold', ...d.prefs}; recording = false;
       $('shortcut').classList.remove('rec'); $('change').textContent = 'Change Shortcut';
       if (d.icon) $('icon').src = $('bigicon').src = d.icon;
