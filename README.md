@@ -56,6 +56,12 @@ Remove: quit Atticus from the tray, then delete `%LOCALAPPDATA%\Programs\Atticus
 
 The AI's Bash is Git Bash. Its helpers are one short command, `atticus --place …`, `atticus --find …`, from a two-line script Atticus puts on its PATH.
 
+## Homelab
+
+Settings → Homelab connects your own servers: **Jellyfin** (resume, next up, latest, play on a TV), **Seerr** (search and request movies and shows), **Sonarr/Radarr** (what's downloading, what's coming out) and **Paperless** (find and read documents). Ask "what should I keep watching?", "add Severance season 2", "when is the next Abbott Elementary?". Keys live in Windows Credential Manager, and the AI only hears about a service when your request is about it, so each one costs nothing until you use it.
+
+Adding one is a single file in `integrations/` (see `integrations/__init__.py`): its settings, a regex of words that bring it up, one line of help for the AI, and `run()`.
+
 ## Safety
 
 Safe mode (on by default) shows an Allow card before anything deletes, sends, buys, changes a file or runs a system command (`Remove-Item`, `reg add`, `taskkill`, `Stop-Computer`…). Clicks inside apps are judged by the button's name, so pressing "Send", "Delete" or "Buy now" asks first, and so does Ctrl+Enter. Enter asks too when it would send a message just typed (Discord, Slack, Teams), but not after typing into a search box like Discord's Ctrl+K switcher. `rm`, `del`, `format`, `diskpart` and shutdown are always blocked. Deletes go to the Recycle Bin. Every exact command is in the ask log.

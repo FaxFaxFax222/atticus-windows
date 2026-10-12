@@ -125,6 +125,12 @@ sealed class SettingsWindow : PageWindow
             case "me": if (S("what") is { } w && S("text") is { } t) Helper("--me", w, t); break;
             case "forget": case "remember": if (S("line") is { } line) Helper("--" + d.GetString(), line); break;
             case "grant": if (S("id") is { } id) Program.Onboarding.Grant(id); break;
+            case "homelab": Task.Run(() => { var j = Py.Run(new[] { "--int-list" }); if (j.TrimStart().StartsWith("[")) Program.Post(() => Js($"st.homelab({j})")); }); break;
+            case "intSave":
+                if (S("name") is not { } name || !b.TryGetProperty("values", out var vals)) return;
+                var lines = string.Join("\n", vals.EnumerateObject().Select(p => p.Name + "=" + (p.Value.GetString() ?? "").Replace("\n", "")));
+                Task.Run(() => { var r = Py.RunWithInput(new[] { "--int", name, "setup" }, lines + "\n", 30); Send("st.intResult", new[] { name, r }); });
+                break;
             case "quit": Application.Exit(); break;
         }
     }

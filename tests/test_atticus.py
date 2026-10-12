@@ -315,6 +315,18 @@ class WatchAndBudgetTests(unittest.TestCase):
             self.assertEqual(calls[-1], ('POST', 'notes', {'title': 'Plan', 'body': 'step one', 'parent_id': 'f1'}))
             self.assertIn('Notebooks: Work Notes', atticus.winctl.joplin_cmd(['new', 'Plan', 'x', '--in', 'Recipes']))   # never a guess
 
+    def test_integrations_are_only_mentioned_when_set_up_and_asked_about(self):
+        with tempfile.TemporaryDirectory() as root, patch.object(atticus.integrations, 'CONFIG', os.path.join(root, 'i.json')), \
+             patch.object(atticus.winctl, 'secret_set', return_value=True) as store, patch.object(atticus.winctl, 'secret_get', return_value='k'):
+            self.assertEqual(atticus.integrations.hints('what should I watch tonight', atticus.INT), '')   # not set up: nothing
+            mod = atticus.integrations.modules()['jellyfin']
+            with patch.object(mod, 'check', return_value='Connected.'):
+                self.assertIn('Connected', atticus.integrations.setup('jellyfin', {'url': 'http://x:8096/', 'user': 'fin', 'key': 'secret'}))
+            store.assert_called_once_with('jellyfin/key', 'secret')   # the key goes to Credential Manager, not the file
+            self.assertNotIn('secret', open(atticus.integrations.CONFIG).read())
+            self.assertIn('atticus --int jellyfin search', atticus.integrations.hints('what should I watch tonight', atticus.INT))
+            self.assertEqual(atticus.integrations.hints('what time is it in Tokyo', atticus.INT), '')   # unrelated: costs nothing
+
     def test_window_rects_fill_halves_and_center_within_the_work_area(self):
         area = (-2560, 0, 2560, 1392)   # a monitor left of the main one
         self.assertEqual(atticus.winctl.rect_for('left', area, (800, 600)), (-2560, 0, 1280, 1392))

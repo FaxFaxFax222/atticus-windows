@@ -106,6 +106,21 @@ static class Py
         catch { return ""; }
     }
 
+    // Run with lines on stdin (secrets never go in a command line), wait: stdout.
+    public static string RunWithInput(IEnumerable<string> args, string input, int secs = 30)
+    {
+        try
+        {
+            using var p = Start(args, input: true);
+            p.StandardInput.Write(input); p.StandardInput.Close();
+            var err = p.StandardError.ReadToEndAsync();
+            var t = p.StandardOutput.ReadToEndAsync();
+            if (!p.WaitForExit(secs * 1000)) { try { p.Kill(true); } catch { } return "timed out"; }
+            return t.Result.Trim();
+        }
+        catch (Exception e) { return e.Message; }
+    }
+
     public static void Stop(Process p)
     {
         if (p == null) return;

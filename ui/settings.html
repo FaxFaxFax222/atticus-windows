@@ -156,6 +156,7 @@
   <button data-s="brain"><i class="ni" style="background:#d97757"><svg viewBox="0 0 24 24"><path d="M12 3v18M3 12h18M5.6 5.6l12.8 12.8M18.4 5.6L5.6 18.4"/></svg></i>Intelligence</button>
   <button data-s="screen"><i class="ni" style="background:#bf5af2"><svg viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="12" rx="2"/><path d="M8.5 20h7M12 16.5V20"/></svg></i>Screen &amp; Windows</button>
   <button data-s="memory"><i class="ni" style="background:#ff9f0a"><svg viewBox="0 0 24 24"><path d="M6 4h12v16l-6-4-6 4z"/></svg></i>Memory</button>
+  <button data-s="homelab"><i class="ni" style="background:#bf5af2"><svg viewBox="0 0 24 24"><path d="M4 11l8-6 8 6v8a1 1 0 0 1-1 1h-4v-5h-6v5H5a1 1 0 0 1-1-1z"/></svg></i>Homelab</button>
   <button data-s="usage"><i class="ni" style="background:#30d158"><svg viewBox="0 0 24 24"><path d="M5 19V11M12 19V5M19 19v-6"/></svg></i>Usage</button>
   <button data-s="apps"><i class="ni" style="background:#ff453a"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="6.5" height="6.5" rx="1.6"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.6"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.6"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.6"/></svg></i>Apps</button>
   <button data-s="account"><i class="ni" style="background:#0a84ff"><svg viewBox="0 0 24 24"><circle cx="12" cy="8.5" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/></svg></i>Account &amp; Access</button>
@@ -256,6 +257,12 @@
     <div class="group" id="skills"></div>
   </section>
 
+  <section id="homelab">
+    <h1>Homelab</h1>
+    <p class="lede">Your own servers. Atticus only mentions one to the AI when you ask about it, so adding more costs nothing. Keys stay in Windows Credential Manager on this PC.</p>
+    <div id="ints"><div class="group"><div class="empty">Loading…</div></div></div>
+  </section>
+
   <section id="usage">
     <h1>Usage</h1>
     <p class="lede">What Atticus has cost, priced at Claude API list rates. On a Claude plan it comes out of your plan’s usage, not your wallet.</p>
@@ -334,7 +341,8 @@
     cancelRecord();
     document.querySelectorAll('nav button, section').forEach(e => e.classList.remove('on'));
     b.classList.add('on'); $(b.dataset.s).classList.add('on');
-    if (b.dataset.s === 'apps') post({ do: 'apps' });   // fresh list and statuses each visit
+    if (b.dataset.s === 'apps') post({ do: 'apps' });
+    if (b.dataset.s === 'homelab') post({ do: 'homelab' });   // fresh list and statuses each visit
   });
   document.querySelectorAll('[data-do]').forEach(b => b.onclick = () => post({ do: b.dataset.do }));
 
@@ -467,7 +475,21 @@
     asking = total = ids.length; count(); post({ do: 'allow', ids });
   };
 
+  const esc = t => String(t ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   window.st = {
+    homelab(list) {   // one card per integration: its fields, Save, and what the test said
+      $('ints').innerHTML = list.map(i => `<h3>${esc(i.title)}${i.on ? ' <span class="pill ok" style="margin-left:6px">On</span>' : ''}</h3>
+        <div class="group" data-int="${esc(i.name)}">${i.fields.map(f => `<div class="row"><div class="t" style="flex:none;width:220px"><b>${esc(f.label)}</b></div>
+          <input class="field" style="flex:1" data-k="${esc(f.k)}" type="${f.secret ? 'password' : 'text'}" value="${esc(f.value)}"
+            placeholder="${f.secret ? (f.has ? 'Saved. Type to replace' : 'Paste it here') : ''}" autocomplete="off" spellcheck="false"></div>`).join('')}
+          <div class="row"><div class="t"><span class="intres"></span></div><button class="btn blue">Save &amp; Test</button></div></div>`).join('');
+      $('ints').querySelectorAll('[data-int]').forEach(g => g.querySelector('button').onclick = () => {
+        const values = {}; g.querySelectorAll('input').forEach(i => values[i.dataset.k] = i.value);
+        g.querySelector('.intres').textContent = 'Testing…';
+        post({ do: 'intSave', name: g.dataset.int, values });
+      });
+    },
+    intResult([name, text]) { const g = $('ints').querySelector(`[data-int="${name}"]`); if (g) g.querySelector('.intres').textContent = text; },
     perms(p) {   // each row shows Allowed or its Allow button
       document.querySelectorAll('[data-g]').forEach(b => { b.hidden = !!p[b.dataset.g]; b.previousElementSibling.hidden = !p[b.dataset.g]; });
     },

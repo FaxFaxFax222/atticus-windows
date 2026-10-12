@@ -52,6 +52,8 @@ New-Item -ItemType Directory -Force $dest, "$dest\ui" | Out-Null
 Copy-Item "$out\*" $dest -Recurse -Force
 Remove-Item $out -Recurse -Force
 Copy-Item atticus.py, winctl.py $dest -Force
+New-Item -ItemType Directory -Force "$dest\integrations" | Out-Null
+Copy-Item integrations\*.py "$dest\integrations" -Force
 Copy-Item ui\*.html, ui\*.js, ui\AppIcon.ico, ui\AppIcon.png "$dest\ui" -Force
 $version = (git log -1 --format='%h - %cd' --date=format:'%b %d, %Y' 2>$null)
 @{ python = "$venv\Scripts\python.exe"; source = $PSScriptRoot; version = "$version" } | ConvertTo-Json | Set-Content "$dest\atticus.json" -Encoding utf8

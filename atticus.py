@@ -27,6 +27,7 @@ try:
     import winctl
 except ImportError:   # tests and syntax checks on other systems
     winctl = None
+import integrations
 
 os.environ.setdefault('PYTHONUTF8', '1')   # helpers and hooks started from here read and write UTF-8
 if sys.platform == 'win32':
@@ -52,6 +53,7 @@ PREFS = os.path.join(DIR, 'settings.json')   # written by the Settings window
 if winctl:
     winctl.APPS_FILE = os.path.join(DIR, 'apps.json')
     winctl.UI_FILE = os.path.join(DIR, 'ui.json')
+integrations.CONFIG = os.path.join(DIR, 'integrations.json')
 # $5 once, sold on Gumroad. shortcut: the source is public, so a coder can delete this check; fine for a $5 app.
 GUMROAD_PRODUCT = ''   # Gumroad product ID; empty = free
 BUY = 'https://3370759087892.gumroad.com/l/atticus'
@@ -98,7 +100,7 @@ def pref(key, default):
 SHOT = 'atticus-screen-'   # temp file prefix, one per display
 os.environ['PATH'] = os.pathsep.join([os.path.join(HOME, '.local', 'bin'), os.path.join(HOME, '.claude', 'local'), os.environ.get('PATH', '')])
 APP = os.environ.get('ATTICUS_APP') or os.path.join(os.environ.get('LOCALAPPDATA', HOME), 'Programs', 'Atticus', 'Atticus.exe')   # set by Atticus.exe
-FIND, CLIP, MEDIA, TRASH, NOTE, WINDOWS, UI, KEYS, JOPLIN = (ME + f' --{c}' for c in ('find', 'clip', 'media', 'trash', 'note', 'windows', 'ui', 'keys', 'joplin'))
+FIND, CLIP, MEDIA, TRASH, NOTE, WINDOWS, UI, KEYS, JOPLIN, INT = (ME + f' --{c}' for c in ('find', 'clip', 'media', 'trash', 'note', 'windows', 'ui', 'keys', 'joplin', 'int'))
 
 SYSTEM = f"""You are Atticus, a Windows PC helper. The user holds a hotkey, talks, lets go; your reply shows in a small box on the user's screen.
 Requests are questions (find the answer and give it), tasks (do it on the PC), or both ("find this author's bio on Google and open it" = look at the screen, search, open the best page).
@@ -126,6 +128,7 @@ Tools (atticus is a command on your PATH):
 - To-do, "remind me", "note this": {NOTE} "<text>" keeps it in the user's notes file. For a time ("remind me in 20 minutes"): {WATCH} cmd '[ $(date +%s) -ge <unix time> ]' and say when. "Where are my notes" = {SHOW} "~/Documents/Atticus Notes.md".
 - "Tell me when / watch / monitor X" (a reply finishes, a build or download ends, a page shows something): look once, pick a short phrase on screen that shows the state, then ONE call: {WATCH} "<app>" "<window title words or empty>" <gone|shows> "<phrase>" ["<what to do then, as a request>"]. gone = done when the phrase disappears; shows = done when it appears. It reads that window every 5 s with no AI (it must stay open, covered is fine, not minimized), notifies the user, then runs the request. Without the screen: {WATCH} cmd '<shell test, exit 0 = done>' ["<request>"]; prefer cmd when it fits. A Codex task is done when: tail -n 2 "$(ls -t ~/.codex/sessions/*/*/*/*.jsonl | head -1)" | grep -q task_complete. Reply that you are watching. "Stop watching": {ME} --unwatch.
 - Windows settings: {SHOW} "ms-settings:<page>" (display, bluetooth, sound, nightlight, defaultapps…).
+Homelab: the user's own servers (media, documents…) come under "Homelab:" in the request with their commands; prefer them over the web or the screen for those things.
 Earlier: the last few questions from the past 5 minutes, if any; use them for follow-ups ("open the second one", "and tomorrow?").
 Memory: the user's saved rules come under "Memory:" in the request; follow them. When the user says remember / from now on, save ONE short line with {REMEMBER} "<rule>". When the user says forget, run {FORGET} "<words from that line>".
 Shortcuts: "when I say X, open/do Y" or "make X a command" where Y is fixed actions (open apps, sites, files): run Y once, then save it with {SHORTCUT} "<X>" '<the one shell command>' (chain with ;). It then runs instantly with no AI; it is not a rule. A rule that is really a command: save the shortcut, then {FORGET} the rule.
@@ -231,6 +234,11 @@ def risky(cmd):
         state, sends = typing_step(state, part)
         if sends:
             return 'Send this?'   # Enter right after typing a message
+        if part.startswith(INT + ' '):
+            q = integrations.risky(part[len(INT) + 1:])
+            if q:
+                return q
+            continue
         if part.startswith(UI + ' click') and winctl:   # a click is as risky as the button's name: "Send", "Delete", "Buy now"
             for i in re.findall(r'"([^"]+)"|\'([^\']+)\'|(\S+)', part[len(UI + ' click'):]):
                 it = winctl.ui_item(next(x for x in i if x)) or {}
@@ -764,6 +772,13 @@ def label(name, inp):
         return 'Filling in a field'
     if c.startswith(KEYS):
         return 'Pressing keys'
+    if c.startswith(INT + ' '):
+        name = (c[len(INT) + 1:].split() or [''])[0]
+        mod = integrations.modules().get(name)
+        verb = (c[len(INT) + 1:].split() + ['', ''])[1]
+        title = mod.TITLE if mod else 'your server'
+        return {'play': f'Playing it with {title}', 'request': f'Requesting it in {title}', 'search': f'Searching {title}',
+                'read': f'Reading it in {title}', 'open': f'Opening it in {title}'}.get(verb, f'Checking {title}')
     if c.startswith(JOPLIN):
         verb = (c[len(JOPLIN):].split() or [''])[0]
         return {'new': 'Writing a note in Joplin', 'add': 'Adding to your note', 'find': 'Searching your notes', 'read': 'Reading your note',
@@ -1206,6 +1221,18 @@ def main():
     if args[:1] == ['--keys'] and len(args) == 3:
         typing_save(f'{KEYS} {args[1]} {args[2]}')
         return print(winctl.hotkey(args[1], args[2]))
+    if args == ['--int-list']:   # Settings → Homelab: every integration and what it needs (never a secret's value)
+        out = []
+        for n, mod in sorted(integrations.modules().items()):
+            cfg = integrations.config(n)
+            out.append({'name': n, 'title': mod.TITLE, 'on': n in integrations.configured(),
+                        'fields': [{'k': k, 'label': lab, 'secret': sec, 'value': '' if sec else cfg.get(k, ''), 'has': bool(cfg.get(k))} for k, lab, sec in mod.FIELDS]})
+        return print(json.dumps(out))
+    if args[:1] == ['--int'] and len(args) >= 3 and args[2] == 'setup':   # values come on stdin, one key=value a line: secrets never sit in a command line
+        values = dict(l.rstrip('\r\n').split('=', 1) for l in sys.stdin if '=' in l)
+        return print(integrations.setup(args[1], values))
+    if args[:1] == ['--int'] and len(args) >= 2:
+        return print(integrations.run(args[1], args[2:]))
     if args[:1] == ['--joplin']:
         return print(winctl.joplin_cmd(args[1:]))
     if args == ['--clip']:
@@ -1321,6 +1348,7 @@ def main():
     you = me_line()
     ctx = (f'About the user: {you} ' if you else '') + f'Front app: {app}. Front window: {win or "?"}.' + (f' Page: {url}.' if url else '') + f' Screens: {scr}. Now: {time.strftime("%a %b %d %Y %I:%M %p")}.'
     mem = relevant_rules(task)
+    homelab = integrations.hints(task, INT)
     turns = recent()
     turns = [r for r in turns if time.time() - r['t'] < 600][-3:]   # this chat only (Atticus.app clears it for a new one); 10 min cap for typed asks
     earlier = ''.join(f'Q: {r["q"]}\nA: {r["a"][:300]}\n' for r in turns)
@@ -1328,7 +1356,7 @@ def main():
     if images == []:
         ctx += ' Screen capture unavailable. Do not guess screen contents; explain how to enable Screen Recording for Atticus.'
     reply, cost, steps = run(f'Context: {ctx}\n' + (f'Earlier:\n{earlier}' if earlier else '') +
-                      (f'Memory:\n{mem}\n' if mem else '') + f'Request: {task}', warm, images or ())
+                      (f'Memory:\n{mem}\n' if mem else '') + (f'Homelab:\n{homelab}\n' if homelab else '') + f'Request: {task}', warm, images or ())
     if not wait_commit():
         return
     reply = point(re.sub(r'\s*\n\s*Sources?:.*\Z', '', reply, flags=re.S | re.I))
