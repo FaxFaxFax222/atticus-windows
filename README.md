@@ -56,9 +56,9 @@ Remove: quit Atticus from the tray, then delete `%LOCALAPPDATA%\Programs\Atticus
 
 The AI's Bash is Git Bash. Its helpers are one short command, `atticus --place …`, `atticus --find …`, from a two-line script Atticus puts on its PATH.
 
-## Homelab
+## Integrations
 
-Settings → Homelab lists every service Atticus knows, with what it lets you say, the fields to fill in (with example addresses), and a "Where's my key?" button that opens the right page on your server. Set up the ones you run:
+Settings → Integrations lists every service Atticus knows, with what it lets you say, the fields to fill in (with example addresses), and a "Where's my key?" button that opens the right page on your server. Set up the ones you run:
 
 | Service | Say things like |
 |---|---|

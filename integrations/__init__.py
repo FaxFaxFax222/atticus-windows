@@ -103,7 +103,7 @@ def remove(name):
 
 
 def catalog():
-    """Every integration, for Settings → Homelab (never a secret's value)."""
+    """Every integration, for Settings → Integrations (never a secret's value)."""
     out = []
     for n, mod in sorted(modules().items(), key=lambda x: x[1].TITLE.lower()):
         cfg = config(n)
@@ -155,11 +155,11 @@ def run(name, args):
         return f'no integration called {name}'
     cfg = config(name)
     if not cfg:
-        return f'{mod.TITLE} is not set up: Atticus Settings → Homelab'
+        return f'{mod.TITLE} is not set up: Atticus Settings → Integrations'
     try:
         return mod.run(cfg, args)
     except urllib.error.HTTPError as e:
-        return f'{mod.TITLE} said {e.code} {e.reason}' + (' (check the API key in Settings → Homelab)' if e.code in (401, 403) else '')
+        return f'{mod.TITLE} said {e.code} {e.reason}' + (' (check the API key in Settings → Integrations)' if e.code in (401, 403) else '')
     except (urllib.error.URLError, TimeoutError, ConnectionError) as e:
         return f"can't reach {mod.TITLE} at {cfg.get('url', '?')}: {getattr(e, 'reason', e)}. Away from home? It may need Tailscale."
 

@@ -128,7 +128,7 @@ Tools (atticus is a command on your PATH):
 - To-do, "remind me", "note this": {NOTE} "<text>" keeps it in the user's notes file. For a time ("remind me in 20 minutes"): {WATCH} cmd '[ $(date +%s) -ge <unix time> ]' and say when. "Where are my notes" = {SHOW} "~/Documents/Atticus Notes.md".
 - "Tell me when / watch / monitor X" (a reply finishes, a build or download ends, a page shows something): look once, pick a short phrase on screen that shows the state, then ONE call: {WATCH} "<app>" "<window title words or empty>" <gone|shows> "<phrase>" ["<what to do then, as a request>"]. gone = done when the phrase disappears; shows = done when it appears. It reads that window every 5 s with no AI (it must stay open, covered is fine, not minimized), notifies the user, then runs the request. Without the screen: {WATCH} cmd '<shell test, exit 0 = done>' ["<request>"]; prefer cmd when it fits. A Codex task is done when: tail -n 2 "$(ls -t ~/.codex/sessions/*/*/*/*.jsonl | head -1)" | grep -q task_complete. Reply that you are watching. "Stop watching": {ME} --unwatch.
 - Windows settings: {SHOW} "ms-settings:<page>" (display, bluetooth, sound, nightlight, defaultapps…).
-Homelab: the user's own servers (media, documents…) come under "Homelab:" in the request with their commands; prefer them over the web or the screen for those things.
+Integrations: the user's own services (media, documents, home…) come under "Integrations:" in the request with their commands; prefer them over the web or the screen for those things.
 Earlier: the last few questions from the past 5 minutes, if any; use them for follow-ups ("open the second one", "and tomorrow?").
 Memory: the user's saved rules come under "Memory:" in the request; follow them. When the user says remember / from now on, save ONE short line with {REMEMBER} "<rule>". When the user says forget, run {FORGET} "<words from that line>".
 Shortcuts: "when I say X, open/do Y" or "make X a command" where Y is fixed actions (open apps, sites, files): run Y once, then save it with {SHORTCUT} "<X>" '<the one shell command>' (chain with ;). It then runs instantly with no AI; it is not a rule. A rule that is really a command: save the shortcut, then {FORGET} the rule.
@@ -1230,7 +1230,7 @@ def main():
     if args[:1] == ['--keys'] and len(args) == 3:
         typing_save(f'{KEYS} {args[1]} {args[2]}')
         return print(winctl.hotkey(args[1], args[2]))
-    if args == ['--int-list']:   # Settings → Homelab: every integration and what it needs (never a secret's value)
+    if args == ['--int-list']:   # Settings → Integrations: every integration and what it needs (never a secret's value)
         return print(json.dumps(integrations.catalog()))
     if args[:1] == ['--int'] and len(args) == 3 and args[2] == 'remove':
         return print(integrations.remove(args[1]))
@@ -1371,7 +1371,7 @@ def main():
     if images == []:
         ctx += ' Screen capture unavailable. Do not guess screen contents; explain how to enable Screen Recording for Atticus.'
     reply, cost, steps = run(f'Context: {ctx}\n' + (f'Earlier:\n{earlier}' if earlier else '') +
-                      (f'Memory:\n{mem}\n' if mem else '') + (f'Homelab:\n{homelab}\n' if homelab else '') + f'Request: {task}', warm, images or ())
+                      (f'Memory:\n{mem}\n' if mem else '') + (f'Integrations:\n{homelab}\n' if homelab else '') + f'Request: {task}', warm, images or ())
     if not wait_commit():
         return
     reply = point(re.sub(r'\s*\n\s*Sources?:.*\Z', '', reply, flags=re.S | re.I))
