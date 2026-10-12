@@ -39,7 +39,7 @@ Paste this in PowerShell:
 irm https://raw.githubusercontent.com/FindlayHi/atticus-windows/main/install.ps1 | iex
 ```
 
-It downloads Atticus to `%USERPROFILE%\.atticus`, builds `%LOCALAPPDATA%\Programs\Atticus\Atticus.exe` (the .NET 10 SDK is fetched per user if missing, no admin), and opens it. Atticus starts at login (Settings → General).
+It downloads Atticus to `%USERPROFILE%\.atticus`, builds `%LOCALAPPDATA%\Programs\Atticus\Atticus.exe` (the .NET 10 SDK is fetched per user if missing, no admin), and opens it. Atticus starts at login (Settings → General) and updates itself: every 6 hours it pulls from GitHub, builds the new version beside the running one, and swaps it in when you're not using it (turn that off in Settings → About & Updates). Local edits in `.atticus` or a failed build leave the running version alone.
 
 Working on the code instead? Clone anywhere and run `powershell -ExecutionPolicy Bypass -File .\build.ps1` after each change.
 
@@ -66,7 +66,6 @@ Unlike the Mac version, there is no sandbox: Claude Code's sandbox isn't availab
 
 - File previews in the "which one?" card.
 - Reminders and Notes scripting: notes go to `Documents\Atticus Notes.md`, timed reminders use a watch.
-- Self-update: run `install.ps1` again to update.
 
 ## Test
 

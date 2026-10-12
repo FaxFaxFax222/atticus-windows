@@ -57,7 +57,7 @@ sealed class SettingsWindow : PageWindow
     public void Push()   // the settings, and the app icon for the sidebar
     {
         if (web == null) return;
-        var d = new Dictionary<string, object> { ["prefs"] = Prefs.D, ["version"] = Paths.Install("version"), ["update"] = "Run install.ps1 again to update.", ["sounds"] = Sound.All() };
+        var d = new Dictionary<string, object> { ["prefs"] = Prefs.D, ["version"] = Paths.Install("version"), ["update"] = Updater.Status == "" ? (Updater.Pending ? "Update ready. Restarting when you’re not using it…" : "") : Updater.Status, ["sounds"] = Sound.All() };
         var png = Path.Combine(Paths.App, "ui", "AppIcon.png");
         if (File.Exists(png)) d["icon"] = "data:image/png;base64," + Convert.ToBase64String(File.ReadAllBytes(png));
         Js($"st.load({Web.Json(d)})");
@@ -115,7 +115,7 @@ sealed class SettingsWindow : PageWindow
             case "record": Record(); break;
             case "cancelRecord": if (Hooks.Recording) Done(0, 0, null); break;
             case "unlearn": if (S("say") is { } say) Helper("--unlearn", say); break;
-            case "checkUpdate": Push(); break;
+            case "checkUpdate": Updater.Check(Push); break;
             case "github": Web.Open("https://github.com/FindlayHi/atticus-windows"); break;
             case "resetHotkey": Prefs.Set("hotkeyCode", 0x20); Prefs.Set("hotkeyMods", 3); Prefs.Set("hotkeyLabel", "Ctrl+Alt+Space"); Push(); break;
             case "preview": if (S("sound") is { } n) Sound.Play(n, Prefs.Num("volume") * 2); break;

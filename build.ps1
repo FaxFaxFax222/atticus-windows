@@ -1,5 +1,7 @@
 # Installs Atticus for this user: builds Atticus.exe, sets up its Python, starts it at login, and (re)starts it now.
 # Run it again after any change:  powershell -ExecutionPolicy Bypass -File .\build.ps1
+# -Stage (the app's updater): build into Atticus.next beside the running app; the app swaps it in when it restarts.
+param([switch]$Stage)
 $ErrorActionPreference = 'Stop'
 Set-Location $PSScriptRoot
 $ProgressPreference = 'SilentlyContinue'
@@ -39,15 +41,21 @@ $stage = Join-Path $env:TEMP ('atticus-build-' + [guid]::NewGuid())
 & $dotnet publish win\Atticus -c Release -r win-x64 --self-contained -p:DebugType=none -o $stage --nologo -v q
 if ($LASTEXITCODE) { Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue; throw 'Build failed; the installed Atticus is unchanged.' }
 
-Get-Process Atticus -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "$app*" } | Stop-Process -Force
-Start-Sleep -Milliseconds 500
-New-Item -ItemType Directory -Force $app, "$app\ui" | Out-Null
-Copy-Item "$stage\*" $app -Recurse -Force
+$dest = if ($Stage) { "$app.next" } else { $app }
+if ($Stage) { Remove-Item $dest -Recurse -Force -ErrorAction SilentlyContinue }
+else {
+  Get-Process Atticus -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "$app\*" } | Stop-Process -Force
+  Start-Sleep -Milliseconds 500
+  Remove-Item "$app.next" -Recurse -Force -ErrorAction SilentlyContinue   # an older staged update must not replace this build
+}
+New-Item -ItemType Directory -Force $dest, "$dest\ui" | Out-Null
+Copy-Item "$stage\*" $dest -Recurse -Force
 Remove-Item $stage -Recurse -Force
-Copy-Item atticus.py, winctl.py $app -Force
-Copy-Item ui\*.html, ui\*.js, ui\AppIcon.ico, ui\AppIcon.png "$app\ui" -Force
+Copy-Item atticus.py, winctl.py $dest -Force
+Copy-Item ui\*.html, ui\*.js, ui\AppIcon.ico, ui\AppIcon.png "$dest\ui" -Force
 $version = (git log -1 --format='%h · %cd' --date=format:'%b %d, %Y' 2>$null)
-@{ python = "$venv\Scripts\python.exe"; source = $PSScriptRoot; version = "$version" } | ConvertTo-Json | Set-Content "$app\atticus.json" -Encoding utf8
+@{ python = "$venv\Scripts\python.exe"; source = $PSScriptRoot; version = "$version" } | ConvertTo-Json | Set-Content "$dest\atticus.json" -Encoding utf8
+if ($Stage) { exit 0 }
 
 # Start menu shortcut, so "Atticus" opens Settings from Start
 $sh = New-Object -ComObject WScript.Shell

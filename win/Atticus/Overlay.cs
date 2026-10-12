@@ -69,6 +69,7 @@ addEventListener('DOMContentLoaded', () => {
     System.Windows.Forms.Timer holdTimer, pauseItem, aheadItem, quiet;
     Point grabOrigin; Rectangle grabFrame;
     bool listening => speech.Running;
+    public bool Listening => listening;
     double Dpi => DeviceDpi / 96.0;
 
     public Overlay(Speech s)
