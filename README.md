@@ -1,6 +1,4 @@
-<h1 align="center">Atticus for Windows</h1>
-
-<p align="center"><b>Your whole PC, one sentence away.</b></p>
+<p align="center"><img src="docs/banner-windows.png" alt="Atticus. Your whole PC, one sentence away." width="100%"></p>
 
 <p align="center">
   Hold <kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>Space</kbd>, say what you need, let go.<br>
