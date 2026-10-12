@@ -259,7 +259,7 @@
 
   <section id="homelab">
     <h1>Homelab</h1>
-    <p class="lede">Your own servers. Atticus only mentions one to the AI when you ask about it, so adding more costs nothing. Keys stay in Windows Credential Manager on this PC.</p>
+    <p class="lede">Your own servers. Set up the ones you run: Atticus only mentions a service to the AI when you ask about it, so each one costs nothing until you use it. Keys stay in Windows Credential Manager on this PC.</p>
     <div id="ints"><div class="group"><div class="empty">Loading…</div></div></div>
   </section>
 
@@ -477,19 +477,34 @@
 
   const esc = t => String(t ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   window.st = {
-    homelab(list) {   // one card per integration: its fields, Save, and what the test said
-      $('ints').innerHTML = list.map(i => `<h3>${esc(i.title)}${i.on ? ' <span class="pill ok" style="margin-left:6px">On</span>' : ''}</h3>
-        <div class="group" data-int="${esc(i.name)}">${i.fields.map(f => `<div class="row"><div class="t" style="flex:none;width:220px"><b>${esc(f.label)}</b></div>
-          <input class="field" style="flex:1" data-k="${esc(f.k)}" type="${f.secret ? 'password' : 'text'}" value="${esc(f.value)}"
-            placeholder="${f.secret ? (f.has ? 'Saved. Type to replace' : 'Paste it here') : ''}" autocomplete="off" spellcheck="false"></div>`).join('')}
-          <div class="row"><div class="t"><span class="intres"></span></div><button class="btn blue">Save &amp; Test</button></div></div>`).join('');
-      $('ints').querySelectorAll('[data-int]').forEach(g => g.querySelector('button').onclick = () => {
-        const values = {}; g.querySelectorAll('input').forEach(i => values[i.dataset.k] = i.value);
-        g.querySelector('.intres').textContent = 'Testing…';
-        post({ do: 'intSave', name: g.dataset.int, values });
+    homelab(list) {   // the catalog: set-up services first, each a card with what it lets you say, fill-ins, and where the key is
+      list.sort((x, y) => (y.on - x.on) || x.title.localeCompare(y.title));
+      $('ints').innerHTML = list.map(i => `<div class="group int" data-int="${esc(i.name)}" data-key-page="${esc(i.keyPage)}">
+        <div class="row"><div class="t"><b>${esc(i.title)}${i.mcp ? ' <span style="opacity:.6;font-weight:400">· MCP</span>' : ''}</b><span>${esc(i.about)}</span></div>
+          ${i.on ? '<span class="pill ok">On</span>' : ''}<button class="btn ${i.on ? '' : 'blue'} toggle">${i.on ? 'Edit' : 'Set up'}</button></div>
+        <div class="fill" hidden>
+          ${i.fields.map(f => `<div class="row"><div class="t" style="flex:none;width:200px"><b>${esc(f.label)}</b></div>
+            <input class="field" style="flex:1" data-k="${esc(f.k)}" type="${f.secret ? 'password' : 'text'}" value="${esc(f.value)}"
+              placeholder="${f.secret ? (f.has ? 'Saved. Type to replace' : 'Paste it here') : esc(f.example)}" autocomplete="off" spellcheck="false"></div>`).join('')}
+          <div class="row"><div class="t"><span>${esc(i.keyHelp)}</span></div><a class="btn keypage" target="_blank">Where’s my key?</a></div>
+          <div class="row"><div class="t"><span class="intres"></span></div>${i.on ? '<button class="btn red remove">Remove</button>' : ''}<button class="btn blue save">Save &amp; Test</button></div>
+        </div></div>`).join('');
+      $('ints').querySelectorAll('.int').forEach(g => {
+        const fill = g.querySelector('.fill'), url = () => (g.querySelector('input[data-k$="url"]')?.value || '').trim().replace(/\/$/, '');
+        g.querySelector('.toggle').onclick = () => { fill.hidden = !fill.hidden; };
+        const kp = g.querySelector('.keypage');
+        kp.onmouseenter = kp.onfocus = () => { kp.href = url() ? url() + g.dataset.keyPage : '#'; };
+        kp.onclick = e => { if (!url()) { e.preventDefault(); g.querySelector('.intres').textContent = 'Fill in the address first.'; } };
+        g.querySelector('.save').onclick = () => {
+          const values = {}; g.querySelectorAll('input').forEach(i => values[i.dataset.k] = i.value);
+          g.querySelector('.intres').textContent = 'Testing…';
+          post({ do: 'intSave', name: g.dataset.int, values });
+        };
+        const rm = g.querySelector('.remove');
+        if (rm) rm.onclick = () => { if (confirm('Remove ' + g.querySelector('b').textContent + '? Its saved key is deleted too.')) post({ do: 'intRemove', name: g.dataset.int }); };
       });
     },
-    intResult([name, text]) { const g = $('ints').querySelector(`[data-int="${name}"]`); if (g) g.querySelector('.intres').textContent = text; },
+    intResult([name, text]) { const g = $('ints').querySelector(`[data-int="${name}"]`); if (g) { g.querySelector('.fill').hidden = false; g.querySelector('.intres').textContent = text; } },
     perms(p) {   // each row shows Allowed or its Allow button
       document.querySelectorAll('[data-g]').forEach(b => { b.hidden = !!p[b.dataset.g]; b.previousElementSibling.hidden = !p[b.dataset.g]; });
     },

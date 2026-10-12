@@ -3,8 +3,12 @@ import datetime
 from . import http, arg
 
 TITLE = 'Sonarr/Radarr'
-FIELDS = [('sonarr_url', 'Sonarr address (e.g. http://100.67.97.6:8989)', False), ('sonarr_key', 'Sonarr API key (Settings → General)', True),
-          ('radarr_url', 'Radarr address (e.g. http://100.67.97.6:7878)', False), ('radarr_key', 'Radarr API key (Settings → General)', True)]
+ABOUT = '"What\'s downloading?" · "When\'s the next Abbott Elementary?" · "What movies come out this week?"'
+EXAMPLE = 'http://<server>:8989  (Radarr: :7878)'
+KEY_HELP = 'In each app: Settings → General → Security → API Key. Fill in one or both.'
+KEY_PAGE = '/settings/general'
+FIELDS = [('sonarr_url', 'Sonarr address', False), ('sonarr_key', 'Sonarr API key', True),
+          ('radarr_url', 'Radarr address', False), ('radarr_key', 'Radarr API key', True)]
 WORDS = r'\b(sonarr|radarr|download|downloading|downloads|queue|coming out|airing|calendar|this week|new episodes?|release|released)\b'
 HELP = '{CMD} downloads (what is downloading, with progress) | calendar [days] (episodes and movies coming out, default 7)'
 RISKY = {}

@@ -126,10 +126,18 @@ sealed class SettingsWindow : PageWindow
             case "forget": case "remember": if (S("line") is { } line) Helper("--" + d.GetString(), line); break;
             case "grant": if (S("id") is { } id) Program.Onboarding.Grant(id); break;
             case "homelab": Task.Run(() => { var j = Py.Run(new[] { "--int-list" }); if (j.TrimStart().StartsWith("[")) Program.Post(() => Js($"st.homelab({j})")); }); break;
+            case "intRemove":
+                if (S("name") is { } rn) Task.Run(() => { Py.Run(new[] { "--int", rn, "remove" }); var j = Py.Run(new[] { "--int-list" }); if (j.TrimStart().StartsWith("[")) Program.Post(() => Js($"st.homelab({j})")); });
+                break;
             case "intSave":
                 if (S("name") is not { } name || !b.TryGetProperty("values", out var vals)) return;
                 var lines = string.Join("\n", vals.EnumerateObject().Select(p => p.Name + "=" + (p.Value.GetString() ?? "").Replace("\n", "")));
-                Task.Run(() => { var r = Py.RunWithInput(new[] { "--int", name, "setup" }, lines + "\n", 30); Send("st.intResult", new[] { name, r }); });
+                Task.Run(() =>
+                {
+                    var r = Py.RunWithInput(new[] { "--int", name, "setup" }, lines + "\n", 30);
+                    var j = Py.Run(new[] { "--int-list" });   // redraw (now "On"), then show what the test said
+                    Program.Post(() => { if (j.TrimStart().StartsWith("[")) Js($"st.homelab({j})"); Js($"st.intResult({Web.Json(new[] { name, r })})"); });
+                });
                 break;
             case "quit": Application.Exit(); break;
         }

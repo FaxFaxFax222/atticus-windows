@@ -3,7 +3,11 @@ import os
 from . import http, year, arg, opt
 
 TITLE = 'Jellyfin'
-FIELDS = [('url', 'Address (e.g. http://100.67.97.6:8096)', False), ('user', 'Your Jellyfin user name', False), ('key', 'API key (Dashboard → API Keys → +)', True)]
+ABOUT = '"What should I keep watching?" · "Play Breaking Bad on the living room TV" · "What\'s new?"'
+EXAMPLE = 'http://<server>:8096'
+KEY_HELP = 'Dashboard → API Keys → + (name it Atticus)'
+KEY_PAGE = '/web/#/dashboard/keys'
+FIELDS = [('url', 'Address', False), ('user', 'Your Jellyfin user name', False), ('key', 'API key', True)]
 WORDS = r'\b(jellyfin|watch|watching|play|resume|continue|episode|season|movie|movies|show|shows|series|tv|film|next up|latest)\b'
 HELP = ('{CMD} search "<title>" | resume | nextup | latest | devices | play "<title>" [--on "<device>"] (no --on: opens it in the browser here). '
         'For "what should I watch", use resume and nextup.')

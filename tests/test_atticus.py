@@ -327,6 +327,22 @@ class WatchAndBudgetTests(unittest.TestCase):
             self.assertIn('atticus --int jellyfin search', atticus.integrations.hints('what should I watch tonight', atticus.INT))
             self.assertEqual(atticus.integrations.hints('what time is it in Tokyo', atticus.INT), '')   # unrelated: costs nothing
 
+    def test_every_integration_loads_and_describes_itself(self):
+        files = {f[:-3] for f in os.listdir(Path(atticus.__file__).parent / 'integrations') if f.endswith('.py') and not f.startswith('_')}
+        mods = atticus.integrations.modules()
+        self.assertEqual(set(mods), files)   # a syntax error would drop one silently
+        for name, mod in mods.items():
+            for attr in ('TITLE', 'ABOUT', 'EXAMPLE', 'KEY_HELP', 'FIELDS', 'WORDS', 'HELP'):
+                self.assertTrue(getattr(mod, attr, None), f'{name}.{attr}')
+            self.assertTrue(callable(getattr(mod, 'run', None)), name)
+
+    def test_home_assistant_security_actions_ask_first(self):
+        ha = atticus.integrations.modules()['homeassistant']
+        self.assertTrue(ha.mcp_risky('HassTurnOff', {'name': 'Front door lock'}))
+        self.assertTrue(ha.mcp_risky('HassSetPosition', {'name': 'Garage door', 'position': 100}))
+        self.assertEqual(ha.mcp_risky('HassTurnOff', {'name': 'Office lights'}), '')
+        self.assertEqual(ha.mcp_risky('GetLiveContext', {}), '')
+
     def test_window_rects_fill_halves_and_center_within_the_work_area(self):
         area = (-2560, 0, 2560, 1392)   # a monitor left of the main one
         self.assertEqual(atticus.winctl.rect_for('left', area, (800, 600)), (-2560, 0, 1280, 1392))

@@ -2,7 +2,11 @@
 from . import http, year, arg
 
 TITLE = 'Seerr'
-FIELDS = [('url', 'Address (e.g. http://100.67.97.6:5055)', False), ('key', 'API key (Settings → General → API Key)', True)]
+ABOUT = 'Jellyseerr / Overseerr. "Add Severance season 2" · "What have I requested?"'
+EXAMPLE = 'http://<server>:5055'
+KEY_HELP = 'Settings → General → API Key'
+KEY_PAGE = '/settings'
+FIELDS = [('url', 'Address', False), ('key', 'API key', True)]
 WORDS = r'\b(seerr|overseerr|jellyseerr|request|add|download|get me|grab|movie|movies|show|shows|series|season|tv|film|requests?)\b'
 HELP = ('{CMD} search "<title>" (status of each: available, requested…) | request <movie|tv> <tmdb id> [season numbers…] '
         '(search first and use its id; tv with no seasons = all) | requests (the latest and their status)')

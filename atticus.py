@@ -277,13 +277,14 @@ def wait_commit():
 def gate():
     """Claude Code's PreToolUse hook in safe mode: a risky command waits for the user's Allow (60 s, then no).
     Allowed = it runs for real, outside the sandbox. The AI asking to leave the sandbox by itself asks too."""
-    inp = json.load(sys.stdin).get('tool_input', {})
+    hook = json.load(sys.stdin)
+    inp, tool = hook.get('tool_input', {}), hook.get('tool_name', '')
     if not wait_commit():
         print(json.dumps({'hookSpecificOutput': {'hookEventName': 'PreToolUse', 'permissionDecision': 'deny',
                           'permissionDecisionReason': 'The request was cancelled before the transcript was confirmed.'}}))
         return
-    cmd = inp.get('command', '')
-    q = risky(cmd) or ('Run outside the safe folder?' if inp.get('dangerouslyDisableSandbox') else '')
+    cmd = inp.get('command', '') if not tool.startswith('mcp__') else f"{tool.split('__')[-1]} {json.dumps(inp)}"
+    q = (integrations.mcp_risky(tool, inp) if tool.startswith('mcp__') else risky(cmd)) or ('Run outside the safe folder?' if inp.get('dangerouslyDisableSandbox') else '')
     if not q or not os.environ.get('ATTICUS_ASK') or not pref('safe', True):
         return
     ok = ask_user({'q': q, 'cmd': cmd[:800]}, 60) == 'y'
@@ -722,6 +723,10 @@ def label(name, inp):
     """Turn a tool call into a short line for the overlay."""
     if name == 'WebSearch':
         return 'Searching the web: ' + inp.get('query', '')
+    if name.startswith('mcp__'):
+        mod = integrations.modules().get(name.split('__')[1])
+        what = re.sub(r'(?<=[a-z])(?=[A-Z])', ' ', name.split('__')[-1].replace('Hass', '')).lower()
+        return f'{mod.TITLE if mod else "Your server"}: {what}'.replace('get live context', 'checking the house')
     if name == 'WebFetch':
         return 'Reading ' + re.sub(r'^https?://(www\.)?([^/]+).*', r'\2', inp.get('url', ''))
     if name == 'Read':
@@ -961,8 +966,9 @@ def shim_env():
     return {**os.environ, 'PATH': shim() + os.pathsep + os.environ.get('PATH', ''), 'PYTHONUTF8': '1'}
 
 
-def start_claude():
-    """`claude -p` started ahead, waiting for the request on stdin: its ~1 s startup happens while the user is still talking."""
+def start_claude(mcp=None):
+    """`claude -p` started ahead, waiting for the request on stdin: its ~1 s startup happens while the user is still talking.
+    mcp: {name: server config} for integrations served over MCP (only when the request is about them)."""
     claude = shutil.which('claude')
     if not claude:
         return None
@@ -975,12 +981,14 @@ def start_claude():
         settings['hooks'] = {'PreToolUse': [{'matcher': '.*', 'hooks': [{'type': 'command', 'command': gate_cmd, 'timeout': 140}]}]}
     errors = tempfile.TemporaryFile(mode='w+', encoding='utf-8', errors='replace')   # draining a pipe only after wait() can deadlock
     # The prompt and settings go in files: an npm-installed claude.cmd runs through cmd.exe, which cuts command lines at 8 KB.
-    sp, st = os.path.join(ask, 'system.md'), os.path.join(ask, 'settings.json')
+    sp, st, mp = os.path.join(ask, 'system.md'), os.path.join(ask, 'settings.json'), os.path.join(ask, 'mcp.json')
     open(sp, 'w', encoding='utf-8').write(system)
     json.dump(settings, open(st, 'w', encoding='utf-8'))
+    if mcp:   # holds a token: it lives in this run's private temp folder, removed when the run ends
+        json.dump({'mcpServers': mcp}, open(mp, 'w', encoding='utf-8'))
     p = subprocess.Popen([claude, '-p', '--input-format', 'stream-json', '--model', pref('model', 'haiku'), '--effort', 'low', '--system-prompt-file', sp,
                           '--tools', 'Bash,Read,WebSearch,WebFetch', '--permission-mode', 'bypassPermissions', '--disallowedTools', *DENY, '--settings', st,
-                          '--setting-sources', '', '--no-session-persistence', '--strict-mcp-config', '--disable-slash-commands', '--output-format', 'stream-json', '--verbose'],
+                          '--setting-sources', '', '--no-session-persistence', '--strict-mcp-config', *(['--mcp-config', mp] if mcp else []), '--disable-slash-commands', '--output-format', 'stream-json', '--verbose'],
                          stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=errors, text=True, encoding='utf-8', errors='replace', cwd=tempfile.gettempdir(),
                          env={**shim_env(), 'ATTICUS_ASK': ask})
     p.ask, p.errors = ask, errors
@@ -1222,12 +1230,9 @@ def main():
         typing_save(f'{KEYS} {args[1]} {args[2]}')
         return print(winctl.hotkey(args[1], args[2]))
     if args == ['--int-list']:   # Settings → Homelab: every integration and what it needs (never a secret's value)
-        out = []
-        for n, mod in sorted(integrations.modules().items()):
-            cfg = integrations.config(n)
-            out.append({'name': n, 'title': mod.TITLE, 'on': n in integrations.configured(),
-                        'fields': [{'k': k, 'label': lab, 'secret': sec, 'value': '' if sec else cfg.get(k, ''), 'has': bool(cfg.get(k))} for k, lab, sec in mod.FIELDS]})
-        return print(json.dumps(out))
+        return print(json.dumps(integrations.catalog()))
+    if args[:1] == ['--int'] and len(args) == 3 and args[2] == 'remove':
+        return print(integrations.remove(args[1]))
     if args[:1] == ['--int'] and len(args) >= 3 and args[2] == 'setup':   # values come on stdin, one key=value a line: secrets never sit in a command line
         values = dict(l.rstrip('\r\n').split('=', 1) for l in sys.stdin if '=' in l)
         return print(integrations.setup(args[1], values))
@@ -1349,6 +1354,11 @@ def main():
     ctx = (f'About the user: {you} ' if you else '') + f'Front app: {app}. Front window: {win or "?"}.' + (f' Page: {url}.' if url else '') + f' Screens: {scr}. Now: {time.strftime("%a %b %d %Y %I:%M %p")}.'
     mem = relevant_rules(task)
     homelab = integrations.hints(task, INT)
+    servers = integrations.mcp_for(task)
+    if servers:   # the warm Claude started before the words were known, without MCP: start one that has them
+        if warm:
+            stop_claude(warm)
+        warm = start_claude(servers)
     turns = recent()
     turns = [r for r in turns if time.time() - r['t'] < 600][-3:]   # this chat only (Atticus.app clears it for a new one); 10 min cap for typed asks
     earlier = ''.join(f'Q: {r["q"]}\nA: {r["a"][:300]}\n' for r in turns)

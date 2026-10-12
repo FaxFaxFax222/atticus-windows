@@ -58,9 +58,24 @@ The AI's Bash is Git Bash. Its helpers are one short command, `atticus --place �
 
 ## Homelab
 
-Settings → Homelab connects your own servers: **Jellyfin** (resume, next up, latest, play on a TV), **Seerr** (search and request movies and shows), **Sonarr/Radarr** (what's downloading, what's coming out) and **Paperless** (find and read documents). Ask "what should I keep watching?", "add Severance season 2", "when is the next Abbott Elementary?". Keys live in Windows Credential Manager, and the AI only hears about a service when your request is about it, so each one costs nothing until you use it.
+Settings → Homelab lists every service Atticus knows, with what it lets you say, the fields to fill in (with example addresses), and a "Where's my key?" button that opens the right page on your server. Set up the ones you run:
 
-Adding one is a single file in `integrations/` (see `integrations/__init__.py`): its settings, a regex of words that bring it up, one line of help for the AI, and `run()`.
+| Service | Say things like |
+|---|---|
+| **Home Assistant** (MCP) | "turn off the office lights", "is there motion in the office?", "set the heat to 21" |
+| **Jellyfin** | "what should I keep watching?", "play Breaking Bad on the living room TV" |
+| **Seerr** | "add Severance season 2", "what have I requested?" |
+| **Sonarr/Radarr** | "what's downloading?", "when's the next Abbott Elementary?" |
+| **Immich** | "show me photos from the cottage last summer", "open the Japan album" |
+| **Nextcloud** | "find my lease PDF", "share the trip photos folder", "what's on my calendar this week?" |
+| **Paperless** | "find my car insurance policy", "when does the fridge warranty end?" |
+| **n8n** | "run the morning report": every workflow with a Webhook trigger becomes a command |
+
+Keys live in Windows Credential Manager. The AI only hears about a service when your request is about it, so each one costs nothing until you use it. Locks, doors, garages and alarms, public share links and n8n runs wait for your Allow.
+
+**Plugins or MCP?** Most services are small plugins: one line of help for the AI, one command. Home Assistant goes through its own MCP server instead (its Assist tools already know your devices); Atticus connects to it only for requests about the home, because MCP tool lists add to every request they ride on.
+
+**Add your own:** one file in `integrations/` (see `integrations/__init__.py`): the fields it needs, a regex of words that bring it up, one line of help, and `run()`. Or `MCP()` returning an HTTP MCP server, like `integrations/homeassistant.py`.
 
 ## Safety
 

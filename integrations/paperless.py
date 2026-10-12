@@ -3,7 +3,11 @@ import os
 from . import http, arg
 
 TITLE = 'Paperless'
-FIELDS = [('url', 'Address (e.g. http://192.168.0.13:31300)', False), ('key', 'API token (your profile → API Auth Token)', True)]
+ABOUT = 'Paperless-ngx. "Find my car insurance policy" · "When does the fridge warranty end?"'
+EXAMPLE = 'http://<server>:8000'
+KEY_HELP = 'Your user menu (top right) → My Profile → API Auth Token'
+KEY_PAGE = '/'
+FIELDS = [('url', 'Address', False), ('key', 'API token', True)]
 WORDS = r'\b(paperless|document|documents|docs?|receipt|receipts|invoice|invoices|bill|bills|statement|policy|warranty|contract|lease|tax|taxes|letter|scan|scanned|paperwork|insurance|manual)\b'
 HELP = ('{CMD} search "<words>" (full text; newest first) | read <id> (its text) | open <id> (in the browser). '
         'Answer from read rather than guessing from titles.')

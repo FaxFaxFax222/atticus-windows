@@ -2,11 +2,16 @@
 
 A module defines:
   TITLE    shown in Settings and in the AI's hints
+  ABOUT    one line for Settings: what it lets you say
+  EXAMPLE  an example address for the Address field (http://<server>:8096)
+  KEY_HELP where the key is, in words;  KEY_PAGE: that page's path on the server, for the "Where's my key?" button
   FIELDS   [(key, label, secret?)] it needs; secrets go to Windows Credential Manager, the rest to integrations.json
   WORDS    a regex: the AI only hears about the integration when the request matches it, so unused ones cost nothing
   HELP     one line for the AI; {CMD} becomes the command to run it
   RISKY    {subcommand: question}: those need the user's Allow in safe mode
   run(cfg, args) -> str      cfg holds every field, secrets included; never print them
+  MCP(cfg) -> dict           optional: an HTTP MCP server Claude Code connects to for matching requests (Home Assistant)
+  mcp_risky(tool, args) -> str   optional: a question for MCP tool calls that need an Allow
 
 The AI runs them as:  atticus --int <name> <subcommand> [args…]
 Setup (Settings, or by hand):  atticus --int <name> setup  then one "key=value" per line on stdin.
@@ -50,7 +55,16 @@ def config(name, secrets=True):
 
 
 def configured():
-    return [n for n in modules() if _saved().get(n, {}).get('enabled', True) and _saved().get(n)]
+    """Set up and usable: saved, not turned off, and holding at least one of its keys (an address alone is not enough)."""
+    import winctl
+    saved, out = _saved(), []
+    for n, mod in modules().items():
+        if not saved.get(n) or not saved[n].get('enabled', True):
+            continue
+        secrets = [k for k, _, sec in mod.FIELDS if sec]
+        if not secrets or any(winctl.secret_get(f'{n}/{k}') for k in secrets):
+            out.append(n)
+    return out
 
 
 def setup(name, values):
@@ -74,6 +88,48 @@ def setup(name, values):
     json.dump(allc, open(CONFIG, 'w', encoding='utf-8'), indent=1)
     test = getattr(mod, 'check', None)
     return f'{mod.TITLE} saved.' + (' ' + test(config(name)) if test else '')
+
+
+def remove(name):
+    import winctl
+    mod, allc = modules().get(name), _saved()
+    if mod:
+        for k, _, secret in mod.FIELDS:
+            if secret:
+                winctl.secret_set(f'{name}/{k}', '')
+    allc.pop(name, None)
+    json.dump(allc, open(CONFIG, 'w', encoding='utf-8'), indent=1)
+    return f'{mod.TITLE if mod else name} removed.'
+
+
+def catalog():
+    """Every integration, for Settings → Homelab (never a secret's value)."""
+    out = []
+    for n, mod in sorted(modules().items(), key=lambda x: x[1].TITLE.lower()):
+        cfg = config(n)
+        out.append({'name': n, 'title': mod.TITLE, 'about': getattr(mod, 'ABOUT', ''), 'on': n in configured(),
+                    'keyHelp': getattr(mod, 'KEY_HELP', ''), 'keyPage': getattr(mod, 'KEY_PAGE', ''), 'mcp': hasattr(mod, 'MCP'),
+                    'fields': [{'k': k, 'label': lab, 'secret': sec, 'value': '' if sec else cfg.get(k, ''), 'has': bool(cfg.get(k)),
+                                'example': getattr(mod, 'EXAMPLE', '') if k.endswith('url') else ''} for k, lab, sec in mod.FIELDS]})
+    return out
+
+
+def mcp_for(task):
+    """{server name: Claude Code MCP config} for the MCP integrations this request is about."""
+    out = {}
+    for n in configured():
+        mod = modules()[n]
+        if hasattr(mod, 'MCP') and re.search(mod.WORDS, task, re.I):
+            out[n] = mod.MCP(config(n))
+    return out
+
+
+def mcp_risky(tool, args):
+    """tool: 'mcp__<server>__<tool>' -> a question, or ''."""
+    parts = tool.split('__')
+    mod = modules().get(parts[1]) if len(parts) > 2 else None
+    f = getattr(mod, 'mcp_risky', None)
+    return f(parts[2], args or {}) if f else ''
 
 
 def hints(task, cmd):
