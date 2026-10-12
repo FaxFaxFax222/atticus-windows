@@ -37,9 +37,9 @@ if (-not $dotnet) {
 }
 
 # A compiler error must leave the installed app alone.
-$stage = Join-Path $env:TEMP ('atticus-build-' + [guid]::NewGuid())
-& $dotnet publish win\Atticus -c Release -r win-x64 --self-contained -p:DebugType=none -o $stage --nologo -v q
-if ($LASTEXITCODE) { Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue; throw 'Build failed; the installed Atticus is unchanged.' }
+$out = Join-Path $env:TEMP ('atticus-build-' + [guid]::NewGuid())
+& $dotnet publish win\Atticus -c Release -r win-x64 --self-contained -p:DebugType=none -o $out --nologo -v q
+if ($LASTEXITCODE) { Remove-Item $out -Recurse -Force -ErrorAction SilentlyContinue; throw 'Build failed; the installed Atticus is unchanged.' }
 
 $dest = if ($Stage) { "$app.next" } else { $app }
 if ($Stage) { Remove-Item $dest -Recurse -Force -ErrorAction SilentlyContinue }
@@ -49,11 +49,11 @@ else {
   Remove-Item "$app.next" -Recurse -Force -ErrorAction SilentlyContinue   # an older staged update must not replace this build
 }
 New-Item -ItemType Directory -Force $dest, "$dest\ui" | Out-Null
-Copy-Item "$stage\*" $dest -Recurse -Force
-Remove-Item $stage -Recurse -Force
+Copy-Item "$out\*" $dest -Recurse -Force
+Remove-Item $out -Recurse -Force
 Copy-Item atticus.py, winctl.py $dest -Force
 Copy-Item ui\*.html, ui\*.js, ui\AppIcon.ico, ui\AppIcon.png "$dest\ui" -Force
-$version = (git log -1 --format='%h · %cd' --date=format:'%b %d, %Y' 2>$null)
+$version = (git log -1 --format='%h - %cd' --date=format:'%b %d, %Y' 2>$null)
 @{ python = "$venv\Scripts\python.exe"; source = $PSScriptRoot; version = "$version" } | ConvertTo-Json | Set-Content "$dest\atticus.json" -Encoding utf8
 if ($Stage) { exit 0 }
 
