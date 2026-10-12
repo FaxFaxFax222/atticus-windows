@@ -69,6 +69,8 @@ Unlike the Mac version, there is no sandbox: Claude Code's sandbox isn't availab
 
 ## Test
 
+The app checks for updates at launch + 1 min and every 6 hours; `Settings → About & Updates → Check Now` checks at once.
+
 `python -m unittest discover -s tests -v` and `python atticus.py --selftest` (with `PYTHONUTF8=1`), plus `Atticus.exe --selftest` after building. `Atticus.exe --transcribe <16 kHz wav>` runs a file through the speech path; `Atticus.exe --text "<app>" [title words]` prints what OCR reads in that window. `ATTICUS_DEMO="<request>"` runs one request at launch without the mic; `ATTICUS_CAPTURABLE=1` lets screenshots see the box (it hides from capture by default).
 
 ## Budget
