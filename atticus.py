@@ -949,7 +949,7 @@ def shim():
     """`atticus` for the AI's Bash (Git Bash): a two-line script that runs this file with this Python. Short commands keep
     the system prompt cheap, and learned shortcuts stay valid if Atticus moves."""
     d = os.path.join(DIR, 'bin')
-    body = f'#!/bin/sh\nexport PYTHONUTF8=1\nexec "{sys.executable.replace(os.sep, "/")}" "{SELF.replace(os.sep, "/")}" "$@"\n'
+    body = f'#!/bin/sh\nexport PYTHONUTF8=1 MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*"\nexec "{sys.executable.replace(os.sep, "/")}" "{SELF.replace(os.sep, "/")}" "$@"\n'
     path = os.path.join(d, 'atticus')
     try:
         if open(path, encoding='utf-8').read() == body:
@@ -963,7 +963,8 @@ def shim():
 
 
 def shim_env():
-    return {**os.environ, 'PATH': shim() + os.pathsep + os.environ.get('PATH', ''), 'PYTHONUTF8': '1'}
+    return {**os.environ, 'PATH': shim() + os.pathsep + os.environ.get('PATH', ''), 'PYTHONUTF8': '1',
+            'MSYS_NO_PATHCONV': '1', 'MSYS2_ARG_CONV_EXCL': '*'}   # Git Bash must not turn "/api/x" into C:/Program Files/Git/api/x
 
 
 def start_claude(mcp=None):
@@ -1230,6 +1231,14 @@ def main():
     if args[:1] == ['--keys'] and len(args) == 3:
         typing_save(f'{KEYS} {args[1]} {args[2]}')
         return print(winctl.hotkey(args[1], args[2]))
+    if args == ['--int-custom']:   # Settings → Add your own: values on stdin, one key=value a line (the key never sits in a command line)
+        values = dict(l.rstrip('\r\n').split('=', 1) for l in sys.stdin if '=' in l)
+        return print(integrations.add_custom(values))
+    if args == ['--int-folder']:   # where personal integration modules go (they survive updates)
+        d = integrations.user_dir()
+        os.makedirs(d, exist_ok=True)
+        os.startfile(d)
+        return print(d)
     if args == ['--int-list']:   # Settings → Integrations: every integration and what it needs (never a secret's value)
         return print(json.dumps(integrations.catalog()))
     if args[:1] == ['--int'] and len(args) == 3 and args[2] == 'remove':

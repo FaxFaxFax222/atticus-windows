@@ -75,7 +75,9 @@ Keys live in Windows Credential Manager. The AI only hears about a service when 
 
 **Plugins or MCP?** Most services are small plugins: one line of help for the AI, one command. Home Assistant goes through its own MCP server instead (its Assist tools already know your devices); Atticus connects to it only for requests about the home, because MCP tool lists add to every request they ride on.
 
-**Add your own:** one file in `integrations/` (see `integrations/__init__.py`): the fields it needs, a regex of words that bring it up, one line of help, and `run()`. Or `MCP()` returning an HTTP MCP server, like `integrations/homeassistant.py`.
+**Add your own, no code:** Settings → Integrations → Add your own takes any **MCP server** (address, token, the words that mean it) or any app with a **web API** (address, how its key is sent, one line about what it is, optionally its docs). Claude already knows the APIs of most self-hosted apps, so "Mealie at http://server:9000" is usually enough for "what's on the meal plan tonight?". Reading runs freely; anything that changes something waits for your Allow.
+
+**Or write one:** a `.py` file in your integrations folder (`%APPDATA%\Atticus\integrations`, linked from Settings) loads next to the built-in ones and survives updates. Same shape as the files in `integrations/` (see `integrations/__init__.py`), or `MCP()` returning an HTTP MCP server like `integrations/homeassistant.py`. Good ones belong in a pull request.
 
 ## Safety
 

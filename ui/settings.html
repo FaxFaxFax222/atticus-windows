@@ -261,6 +261,22 @@
     <h1>Integrations</h1>
     <p class="lede">Your own servers. Set up the ones you run: Atticus only mentions a service to the AI when you ask about it, so each one costs nothing until you use it. Keys stay in Windows Credential Manager on this PC.</p>
     <div id="ints"><div class="group"><div class="empty">Loading…</div></div></div>
+    <h3>Add your own</h3>
+    <div class="group" id="addown">
+      <div class="row"><div class="t"><b>It is</b><span>An MCP server, or any app with a web API.</span></div><div class="seg" id="ownkind"><button data-v="api" class="on">Web API</button><button data-v="mcp">MCP server</button></div></div>
+      <div class="row"><div class="t" style="flex:none;width:200px"><b>Name</b></div><input class="field" style="flex:1" data-o="title" placeholder="Mealie" spellcheck="false"></div>
+      <div class="row"><div class="t" style="flex:none;width:200px"><b>Address</b></div><input class="field" style="flex:1" data-o="url" placeholder="http://<server>:9000" spellcheck="false"></div>
+      <div class="row"><div class="t" style="flex:none;width:200px"><b>Key or token</b><span>Blank if it has none.</span></div><input class="field" style="flex:1" data-o="key" type="password" autocomplete="off"></div>
+      <div class="row"><div class="t" style="flex:none;width:200px"><b>Key goes in</b></div>
+        <select data-o="auth"><option value="bearer">Authorization: Bearer</option><option value="header">A header…</option><option value="query">The address (?name=key)</option><option value="basic">Basic (user:password)</option><option value="none">No key</option></select>
+        <input class="field" style="flex:1" data-o="auth_name" placeholder="X-Api-Key" hidden spellcheck="false"></div>
+      <div class="row"><div class="t" style="flex:none;width:200px"><b>What it is</b><span>One line for the AI.</span></div><input class="field" style="flex:1" data-o="about" placeholder="Our recipes and meal plans" spellcheck="false"></div>
+      <div class="row"><div class="t" style="flex:none;width:200px"><b>Words that mean it</b><span>Commas. Atticus brings it up only for these.</span></div><input class="field" style="flex:1" data-o="words" placeholder="recipe, recipes, meal plan, dinner" spellcheck="false"></div>
+      <div class="row own-api"><div class="t" style="flex:none;width:200px"><b>API docs</b><span>Optional link.</span></div><input class="field" style="flex:1" data-o="docs" placeholder="https://docs.mealie.io/api/" spellcheck="false"></div>
+      <div class="row own-mcp" hidden><div class="t"><b>Ask before it changes things</b><span>Every tool that isn't a get, list or search waits for your Allow.</span></div><label class="sw"><input type="checkbox" data-o="ask" checked></label></div>
+      <div class="row"><div class="t"><span id="ownres">Reading from a web API runs freely; anything that changes it asks you first.</span></div><button class="btn blue" id="ownadd">Add &amp; Test</button></div>
+    </div>
+    <p class="lede" style="margin:8px 4px 0;font-size:11.5px">Writing your own in Python? Put it in your <a data-do="intFolder">integrations folder</a>, shaped like the ones in Atticus's <code>integrations</code> folder. It survives updates; share good ones as a pull request.</p>
   </section>
 
   <section id="usage">
@@ -476,12 +492,35 @@
   };
 
   const esc = t => String(t ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  let ownKind = 'api';
+  document.querySelectorAll('#ownkind button').forEach(b => b.onclick = () => {
+    ownKind = b.dataset.v;
+    document.querySelectorAll('#ownkind button').forEach(x => x.classList.toggle('on', x === b));
+    document.querySelectorAll('.own-api').forEach(r => r.hidden = ownKind !== 'api');
+    document.querySelectorAll('.own-mcp').forEach(r => r.hidden = ownKind !== 'mcp');
+    document.querySelector('[data-o="url"]').placeholder = ownKind === 'mcp' ? 'http://<server>:<port>/mcp' : 'http://<server>:9000';
+    $('ownres').textContent = ownKind === 'mcp' ? 'Atticus connects to it only for requests that use its words.' : 'Reading from a web API runs freely; anything that changes it asks you first.';
+  });
+  document.querySelector('[data-o="auth"]').onchange = e => {
+    const n = document.querySelector('[data-o="auth_name"]');
+    n.hidden = !['header', 'query'].includes(e.target.value); n.placeholder = e.target.value === 'query' ? 'apikey' : 'X-Api-Key';
+  };
+  $('ownadd').onclick = () => {
+    const values = { kind: ownKind };
+    document.querySelectorAll('#addown [data-o]').forEach(i => values[i.dataset.o] = i.type === 'checkbox' ? String(i.checked) : i.value);
+    $('ownres').textContent = 'Testing…';
+    post({ do: 'intCustom', values });
+  };
   window.st = {
+    ownResult(text) {
+      $('ownres').textContent = text;
+      if (/saved/i.test(text)) document.querySelectorAll('#addown input.field').forEach(i => i.value = '');
+    },
     homelab(list) {   // the catalog: set-up services first, each a card with what it lets you say, fill-ins, and where the key is
       list.sort((x, y) => (y.on - x.on) || x.title.localeCompare(y.title));
       $('ints').innerHTML = list.map(i => `<div class="group int" data-int="${esc(i.name)}" data-key-page="${esc(i.keyPage)}">
         <div class="row"><div class="t"><b>${esc(i.title)}${i.mcp ? ' <span style="opacity:.6;font-weight:400">· MCP</span>' : ''}</b><span>${esc(i.about)}</span></div>
-          ${i.on ? '<span class="pill ok">On</span>' : ''}<button class="btn ${i.on ? '' : 'blue'} toggle">${i.on ? 'Edit' : 'Set up'}</button></div>
+          ${i.custom ? '<span class="pill" style="margin-right:6px">Yours</span>' : ''}${i.on ? '<span class="pill ok">On</span>' : ''}<button class="btn ${i.on ? '' : 'blue'} toggle">${i.on ? 'Edit' : 'Set up'}</button></div>
         <div class="fill" hidden>
           ${i.fields.map(f => `<div class="row"><div class="t" style="flex:none;width:200px"><b>${esc(f.label)}</b></div>
             <input class="field" style="flex:1" data-k="${esc(f.k)}" type="${f.secret ? 'password' : 'text'}" value="${esc(f.value)}"

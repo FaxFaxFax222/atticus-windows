@@ -126,6 +126,17 @@ sealed class SettingsWindow : PageWindow
             case "forget": case "remember": if (S("line") is { } line) Helper("--" + d.GetString(), line); break;
             case "grant": if (S("id") is { } id) Program.Onboarding.Grant(id); break;
             case "homelab": Task.Run(() => { var j = Py.Run(new[] { "--int-list" }); if (j.TrimStart().StartsWith("[")) Program.Post(() => Js($"st.homelab({j})")); }); break;
+            case "intCustom":
+                if (!b.TryGetProperty("values", out var ov)) return;
+                var olines = string.Join("\n", ov.EnumerateObject().Select(p => p.Name + "=" + (p.Value.GetString() ?? "").Replace("\n", " ")));
+                Task.Run(() =>
+                {
+                    var r = Py.RunWithInput(new[] { "--int-custom" }, olines + "\n", 30);
+                    var j = Py.Run(new[] { "--int-list" });
+                    Program.Post(() => { if (j.TrimStart().StartsWith("[")) Js($"st.homelab({j})"); Js($"st.ownResult({Web.Json(r)})"); });
+                });
+                break;
+            case "intFolder": Task.Run(() => Py.Run(new[] { "--int-folder" })); break;
             case "intRemove":
                 if (S("name") is { } rn) Task.Run(() => { Py.Run(new[] { "--int", rn, "remove" }); var j = Py.Run(new[] { "--int-list" }); if (j.TrimStart().StartsWith("[")) Program.Post(() => Js($"st.homelab({j})")); });
                 break;

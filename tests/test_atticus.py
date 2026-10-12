@@ -343,6 +343,32 @@ class WatchAndBudgetTests(unittest.TestCase):
         self.assertEqual(ha.mcp_risky('HassTurnOff', {'name': 'Office lights'}), '')
         self.assertEqual(ha.mcp_risky('GetLiveContext', {}), '')
 
+    def test_people_can_add_their_own_services(self):
+        I = atticus.integrations
+        with tempfile.TemporaryDirectory() as root, patch.object(I, 'CONFIG', os.path.join(root, 'i.json')), \
+             patch.object(atticus.winctl, 'secret_set', return_value=True), patch.object(atticus.winctl, 'secret_get', return_value=''):
+            I._mods.clear()
+            os.makedirs(os.path.join(root, 'integrations'))
+            Path(root, 'integrations', 'hello.py').write_text("from . import arg\nTITLE='Hello'\nABOUT='a'\nEXAMPLE='x'\nKEY_HELP='k'\n"
+                                                             "FIELDS=[('url','Address',False)]\nWORDS=r'\\bhello\\b'\nHELP='{CMD} greet'\nRISKY={}\n"
+                                                             "def run(cfg, args): return 'hi ' + arg(args, 0)\n")
+            from integrations import _custom
+            with patch.object(_custom.Custom, 'check', return_value='Connected.'):
+                self.assertIn('saved', I.add_custom({'kind': 'api', 'title': 'Mealie', 'url': 'http://m:9000', 'auth': 'none', 'words': 'recipe, meal plan'}))
+                self.assertIn('saved', I.add_custom({'kind': 'mcp', 'title': 'Garden', 'url': 'http://g/mcp', 'words': 'sprinklers'}))
+            self.assertIn('hello', I.modules())   # the personal folder loads
+            self.assertIn('my_mealie', I.configured())   # no key needed for your own
+            self.assertIn('my_mealie get', I.hints('what is the meal plan tonight', atticus.INT))
+            self.assertEqual(I.hints('what time is it', atticus.INT), '')
+            self.assertEqual(atticus.risky(f'{atticus.INT} my_mealie delete "/api/recipes/1"'), 'Change something in Mealie?')
+            self.assertEqual(atticus.risky(f'{atticus.INT} my_mealie get "/api/recipes"'), '')
+            self.assertEqual(list(I.mcp_for('water the sprinklers')), ['my_garden'])
+            self.assertTrue(I.mcp_risky('mcp__my_garden__StartZone', {'name': 'back'}))
+            self.assertEqual(I.mcp_risky('mcp__my_garden__ListZones', {}), '')
+            I.remove('my_mealie')
+            self.assertNotIn('my_mealie', I.modules())
+        I._mods.clear()
+
     def test_window_rects_fill_halves_and_center_within_the_work_area(self):
         area = (-2560, 0, 2560, 1392)   # a monitor left of the main one
         self.assertEqual(atticus.winctl.rect_for('left', area, (800, 600)), (-2560, 0, 1280, 1392))

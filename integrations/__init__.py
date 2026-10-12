@@ -15,11 +15,19 @@ A module defines:
 
 The AI runs them as:  atticus --int <name> <subcommand> [args…]
 Setup (Settings, or by hand):  atticus --int <name> setup  then one "key=value" per line on stdin.
+
+Three more places integrations come from, so people can add their own:
+  - <config folder>/integrations/*.py: personal modules, same shape as these; they survive updates
+  - Settings → Integrations → Add your own: an MCP server or any web API, no code (see _custom.py)
 """
-import importlib, json, os, pkgutil, re, sys, urllib.error, urllib.parse, urllib.request
+import importlib, importlib.util, json, os, pkgutil, re, sys, urllib.error, urllib.parse, urllib.request
 
 CONFIG = None   # set by atticus.py: <DIR>/integrations.json
 _mods = {}
+
+
+def user_dir():
+    return os.path.join(os.path.dirname(CONFIG), 'integrations') if CONFIG else ''
 
 
 def modules():
@@ -30,7 +38,45 @@ def modules():
                     _mods[m.name] = importlib.import_module(f'{__name__}.{m.name}')
                 except Exception as e:   # one broken integration must not take the others down
                     print(f'integration {m.name} failed to load: {e}', file=sys.stderr)
+        d = user_dir()
+        for f in sorted(os.listdir(d)) if d and os.path.isdir(d) else []:   # personal modules; a built-in of the same name wins
+            stem = f[:-3]
+            if f.endswith('.py') and not f.startswith('_') and stem not in _mods:
+                try:
+                    spec = importlib.util.spec_from_file_location(f'{__name__}.{stem}', os.path.join(d, f))
+                    mod = importlib.util.module_from_spec(spec)
+                    sys.modules[spec.name] = mod   # so its "from . import http" works
+                    spec.loader.exec_module(mod)
+                    mod.PERSONAL = True
+                    _mods[stem] = mod
+                except Exception as e:
+                    print(f'your integration {f} failed to load: {e}', file=sys.stderr)
+        from ._custom import Custom
+        for n, d in (_saved().get('_custom') or {}).items():
+            if n not in _mods:
+                _mods[n] = Custom(n, d)
     return _mods
+
+
+def add_custom(values):
+    """Settings → Add your own. values: kind (mcp|api), title, url, key, auth, auth_name, about, words, docs, ask."""
+    from ._custom import AUTHS, slug
+    title = ' '.join(values.get('title', '').split())[:40]
+    if not title or not values.get('url', '').strip():
+        return 'Give it a name and an address.'
+    name = slug(title)
+    if name in modules() and name not in (_saved().get('_custom') or {}):   # a personal module took the name; same name again = an update
+        return f'{title} is already an integration: set it up in its own card.'
+    d = {'kind': 'mcp' if values.get('kind') == 'mcp' else 'api', 'title': title,
+         'auth': values.get('auth') if values.get('auth') in AUTHS else 'bearer', 'auth_name': values.get('auth_name', '').strip()[:60],
+         'about': ' '.join(values.get('about', '').split())[:200], 'words': values.get('words', '')[:300],
+         'docs': values.get('docs', '').strip()[:200], 'ask': values.get('ask', 'true') != 'false'}
+    allc = _saved()
+    allc.setdefault('_custom', {})[name] = d
+    os.makedirs(os.path.dirname(CONFIG), exist_ok=True)
+    json.dump(allc, open(CONFIG, 'w', encoding='utf-8'), indent=1)
+    _mods.clear()   # load it like the rest
+    return setup(name, {'url': values.get('url', ''), 'key': values.get('key', '')})
 
 
 def _saved():
@@ -62,7 +108,7 @@ def configured():
         if not saved.get(n) or not saved[n].get('enabled', True):
             continue
         secrets = [k for k, _, sec in mod.FIELDS if sec]
-        if not secrets or any(winctl.secret_get(f'{n}/{k}') for k in secrets):
+        if not secrets or getattr(mod, 'KEY_OPTIONAL', False) or any(winctl.secret_get(f'{n}/{k}') for k in secrets):
             out.append(n)
     return out
 
@@ -98,7 +144,9 @@ def remove(name):
             if secret:
                 winctl.secret_set(f'{name}/{k}', '')
     allc.pop(name, None)
+    (allc.get('_custom') or {}).pop(name, None)   # one you added: gone from the list too
     json.dump(allc, open(CONFIG, 'w', encoding='utf-8'), indent=1)
+    _mods.clear()
     return f'{mod.TITLE if mod else name} removed.'
 
 
@@ -109,6 +157,7 @@ def catalog():
         cfg = config(n)
         out.append({'name': n, 'title': mod.TITLE, 'about': getattr(mod, 'ABOUT', ''), 'on': n in configured(),
                     'keyHelp': getattr(mod, 'KEY_HELP', ''), 'keyPage': getattr(mod, 'KEY_PAGE', ''), 'mcp': hasattr(mod, 'MCP'),
+                    'custom': getattr(mod, 'CUSTOM', '') or ('personal' if getattr(mod, 'PERSONAL', False) else ''),
                     'fields': [{'k': k, 'label': lab, 'secret': sec, 'value': '' if sec else cfg.get(k, ''), 'has': bool(cfg.get(k)),
                                 'example': getattr(mod, 'EXAMPLE', '') if k.endswith('url') else ''} for k, lab, sec in mod.FIELDS]})
     return out
