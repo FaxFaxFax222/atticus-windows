@@ -1313,6 +1313,8 @@ def main():
             return print(text_of(get(args[1]))[:5000])   # ~1.2K tokens: enough for an answer, cheap to read
         except Exception as e:
             return print(f'could not read: {e}')
+    if args[:1] in (['--help'], ['-h']) or (args and args[0].startswith('--') and args != ['--wait'] and args != ['--plan']):
+        return print(__doc__.strip() if args[0] in ('--help', '-h') else f'unknown option {args[0]}. ' + __doc__.strip())   # never an AI ask: the AI's own `atticus --help` must not start another one
     warm = start_claude() if args == ['--wait'] else None   # Atticus.app: started at key-down, request comes on stdin at release
     shots = []
     snap = threading.Thread(target=lambda: shots.extend(look()), daemon=True)   # the screen as the user pressed the keys; sent only if the words are about it
@@ -1428,6 +1430,10 @@ if __name__ == '__main__':
         assert risky('reg add HKCU\\x /v y') == 'Run a system command?' == risky('powershell Stop-Computer') == risky('taskkill /im chrome.exe')
         assert risky('echo x >> ~/.bashrc') == 'Change a file?' == risky('powershell Set-Content a.txt b') and not risky('ls >/dev/null; echo > /tmp/a; dir > $null')
         assert len(SYSTEM.replace('NEVER_RISKY', ASK_FIRST) + ASK_ME + POINTER + LEARN_ME + TEACH + JOPLIN_TOOLS) < 10000
+        import io, contextlib
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            sys.argv = ['atticus.py', '--help']; main()
+        assert 'atticus.py --place' in out.getvalue()   # help is text, not a request
         route = f'{KEYS} Discord ctrl+k; {TYPE} --in Discord "Sam"; {KEYS} Discord enter; {TYPE} --in Discord "late"'
         os.environ['ATTICUS_ASK'] = tempfile.mkdtemp()
         assert not risky(route) and risky(route + f'; {KEYS} Discord enter') == 'Send this?' and not risky(f'{KEYS} Chrome enter')
