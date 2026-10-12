@@ -27,4 +27,5 @@ jobs:
       - name: Installer syntax
         shell: pwsh
         run: |
+          $e = $null
           foreach ($f in 'build.ps1', 'install.ps1') { $null = [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $f), [ref]$null, [ref]$e); if ($e) { $e; exit 1 } }
