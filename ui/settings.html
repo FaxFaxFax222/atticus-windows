@@ -156,7 +156,7 @@
   <button data-s="brain"><i class="ni" style="background:#d97757"><svg viewBox="0 0 24 24"><path d="M12 3v18M3 12h18M5.6 5.6l12.8 12.8M18.4 5.6L5.6 18.4"/></svg></i>Intelligence</button>
   <button data-s="screen"><i class="ni" style="background:#bf5af2"><svg viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="12" rx="2"/><path d="M8.5 20h7M12 16.5V20"/></svg></i>Screen &amp; Windows</button>
   <button data-s="memory"><i class="ni" style="background:#ff9f0a"><svg viewBox="0 0 24 24"><path d="M6 4h12v16l-6-4-6 4z"/></svg></i>Memory</button>
-  <button data-s="homelab"><i class="ni" style="background:#bf5af2"><svg viewBox="0 0 24 24"><path d="M4 11l8-6 8 6v8a1 1 0 0 1-1 1h-4v-5h-6v5H5a1 1 0 0 1-1-1z"/></svg></i>Integrations</button>
+  <button data-s="integrations"><i class="ni" style="background:#bf5af2"><svg viewBox="0 0 24 24"><path d="M4 11l8-6 8 6v8a1 1 0 0 1-1 1h-4v-5h-6v5H5a1 1 0 0 1-1-1z"/></svg></i>Integrations</button>
   <button data-s="usage"><i class="ni" style="background:#30d158"><svg viewBox="0 0 24 24"><path d="M5 19V11M12 19V5M19 19v-6"/></svg></i>Usage</button>
   <button data-s="apps"><i class="ni" style="background:#ff453a"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="6.5" height="6.5" rx="1.6"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.6"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.6"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.6"/></svg></i>Apps</button>
   <button data-s="account"><i class="ni" style="background:#0a84ff"><svg viewBox="0 0 24 24"><circle cx="12" cy="8.5" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/></svg></i>Account &amp; Access</button>
@@ -257,7 +257,7 @@
     <div class="group" id="skills"></div>
   </section>
 
-  <section id="homelab">
+  <section id="integrations">
     <h1>Integrations</h1>
     <p class="lede">Your own servers. Set up the ones you run: Atticus only mentions a service to the AI when you ask about it, so each one costs nothing until you use it. Keys stay in Windows Credential Manager on this PC.</p>
     <div id="ints"><div class="group"><div class="empty">Loading…</div></div></div>
@@ -358,7 +358,7 @@
     document.querySelectorAll('nav button, section').forEach(e => e.classList.remove('on'));
     b.classList.add('on'); $(b.dataset.s).classList.add('on');
     if (b.dataset.s === 'apps') post({ do: 'apps' });
-    if (b.dataset.s === 'homelab') post({ do: 'homelab' });   // fresh list and statuses each visit
+    if (b.dataset.s === 'integrations') post({ do: 'integrations' });   // fresh list and statuses each visit
   });
   document.querySelectorAll('[data-do]').forEach(b => b.onclick = () => post({ do: b.dataset.do }));
 
@@ -516,7 +516,7 @@
       $('ownres').textContent = text;
       if (/saved/i.test(text)) document.querySelectorAll('#addown input.field').forEach(i => i.value = '');
     },
-    homelab(list) {   // the catalog: set-up services first, each a card with what it lets you say, fill-ins, and where the key is
+    integrations(list) {   // the catalog: set-up services first, each a card with what it lets you say, fill-ins, and where the key is
       list.sort((x, y) => (y.on - x.on) || x.title.localeCompare(y.title));
       $('ints').innerHTML = list.map(i => `<div class="group int" data-int="${esc(i.name)}" data-key-page="${esc(i.keyPage)}">
         <div class="row"><div class="t"><b>${esc(i.title)}${i.mcp ? ' <span style="opacity:.6;font-weight:400">· MCP</span>' : ''}</b><span>${esc(i.about)}</span></div>

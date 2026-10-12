@@ -1367,7 +1367,7 @@ def main():
     you = me_line()
     ctx = (f'About the user: {you} ' if you else '') + f'Front app: {app}. Front window: {win or "?"}.' + (f' Page: {url}.' if url else '') + f' Screens: {scr}. Now: {time.strftime("%a %b %d %Y %I:%M %p")}.'
     mem = relevant_rules(task)
-    homelab = integrations.hints(task, INT)
+    int_hints = integrations.hints(task, INT)
     servers = integrations.mcp_for(task)
     if servers:   # the warm Claude started before the words were known, without MCP: start one that has them
         if warm:
@@ -1380,7 +1380,7 @@ def main():
     if images == []:
         ctx += ' Screen capture unavailable. Do not guess screen contents; explain how to enable Screen Recording for Atticus.'
     reply, cost, steps = run(f'Context: {ctx}\n' + (f'Earlier:\n{earlier}' if earlier else '') +
-                      (f'Memory:\n{mem}\n' if mem else '') + (f'Integrations:\n{homelab}\n' if homelab else '') + f'Request: {task}', warm, images or ())
+                      (f'Memory:\n{mem}\n' if mem else '') + (f'Integrations:\n{int_hints}\n' if int_hints else '') + f'Request: {task}', warm, images or ())
     if not wait_commit():
         return
     reply = point(re.sub(r'\s*\n\s*Sources?:.*\Z', '', reply, flags=re.S | re.I))

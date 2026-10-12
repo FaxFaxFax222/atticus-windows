@@ -369,6 +369,11 @@ class WatchAndBudgetTests(unittest.TestCase):
             self.assertNotIn('my_mealie', I.modules())
         I._mods.clear()
 
+    def test_the_feature_is_called_integrations(self):
+        root = Path(atticus.__file__).parent   # the user renamed it; "homelab" must not creep back into anything people read
+        for f in [root / 'README.md', *root.glob('ui/*.html'), *root.glob('integrations/*.py'), root / 'atticus.py']:
+            self.assertNotIn('homelab', f.read_text(encoding='utf-8').lower(), f.name)
+
     def test_window_rects_fill_halves_and_center_within_the_work_area(self):
         area = (-2560, 0, 2560, 1392)   # a monitor left of the main one
         self.assertEqual(atticus.winctl.rect_for('left', area, (800, 600)), (-2560, 0, 1280, 1392))

@@ -125,7 +125,7 @@ sealed class SettingsWindow : PageWindow
             case "me": if (S("what") is { } w && S("text") is { } t) Helper("--me", w, t); break;
             case "forget": case "remember": if (S("line") is { } line) Helper("--" + d.GetString(), line); break;
             case "grant": if (S("id") is { } id) Program.Onboarding.Grant(id); break;
-            case "homelab": Task.Run(() => { var j = Py.Run(new[] { "--int-list" }); if (j.TrimStart().StartsWith("[")) Program.Post(() => Js($"st.homelab({j})")); }); break;
+            case "integrations": Task.Run(() => { var j = Py.Run(new[] { "--int-list" }); if (j.TrimStart().StartsWith("[")) Program.Post(() => Js($"st.integrations({j})")); }); break;
             case "intCustom":
                 if (!b.TryGetProperty("values", out var ov)) return;
                 var olines = string.Join("\n", ov.EnumerateObject().Select(p => p.Name + "=" + (p.Value.GetString() ?? "").Replace("\n", " ")));
@@ -133,12 +133,12 @@ sealed class SettingsWindow : PageWindow
                 {
                     var r = Py.RunWithInput(new[] { "--int-custom" }, olines + "\n", 30);
                     var j = Py.Run(new[] { "--int-list" });
-                    Program.Post(() => { if (j.TrimStart().StartsWith("[")) Js($"st.homelab({j})"); Js($"st.ownResult({Web.Json(r)})"); });
+                    Program.Post(() => { if (j.TrimStart().StartsWith("[")) Js($"st.integrations({j})"); Js($"st.ownResult({Web.Json(r)})"); });
                 });
                 break;
             case "intFolder": Task.Run(() => Py.Run(new[] { "--int-folder" })); break;
             case "intRemove":
-                if (S("name") is { } rn) Task.Run(() => { Py.Run(new[] { "--int", rn, "remove" }); var j = Py.Run(new[] { "--int-list" }); if (j.TrimStart().StartsWith("[")) Program.Post(() => Js($"st.homelab({j})")); });
+                if (S("name") is { } rn) Task.Run(() => { Py.Run(new[] { "--int", rn, "remove" }); var j = Py.Run(new[] { "--int-list" }); if (j.TrimStart().StartsWith("[")) Program.Post(() => Js($"st.integrations({j})")); });
                 break;
             case "intSave":
                 if (S("name") is not { } name || !b.TryGetProperty("values", out var vals)) return;
@@ -147,7 +147,7 @@ sealed class SettingsWindow : PageWindow
                 {
                     var r = Py.RunWithInput(new[] { "--int", name, "setup" }, lines + "\n", 30);
                     var j = Py.Run(new[] { "--int-list" });   // redraw (now "On"), then show what the test said
-                    Program.Post(() => { if (j.TrimStart().StartsWith("[")) Js($"st.homelab({j})"); Js($"st.intResult({Web.Json(new[] { name, r })})"); });
+                    Program.Post(() => { if (j.TrimStart().StartsWith("[")) Js($"st.integrations({j})"); Js($"st.intResult({Web.Json(new[] { name, r })})"); });
                 });
                 break;
             case "quit": Application.Exit(); break;

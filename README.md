@@ -8,13 +8,13 @@
 </p>
 
 <p align="center">
-  <b>⚡ Fast</b> &nbsp;·&nbsp; <b>🔑 No API key</b> &nbsp;·&nbsp; <b>🧠 Remembers you</b> &nbsp;·&nbsp; <b>🏠 Runs your homelab</b> &nbsp;·&nbsp; <b>Free and open source</b>
+  <b>⚡ Fast</b> &nbsp;·&nbsp; <b>🔑 No API key</b> &nbsp;·&nbsp; <b>🧠 Remembers you</b> &nbsp;·&nbsp; <b>🔌 Integrations</b> &nbsp;·&nbsp; <b>Free and open source</b>
 </p>
 
 - **Fast.** Simple asks skip the AI: an app opens in a blink. Ask for an action once and Atticus learns it, so next time it runs with no AI and for free.
 - **No API key.** It runs on the Claude Pro or Max plan you already have, through Claude Code. Nothing to sign up for, no key to paste, no extra bill.
 - **Remembers you.** Say "remember…" and every ask after that knows it. It picks up who you are (your name, your apps) and fixes its own mistakes when you correct it.
-- **Runs your homelab.** Jellyfin, Home Assistant, Immich, the arr stack and more, by voice. Or add your own in a minute, no code.
+- **Integrations.** Jellyfin, Home Assistant, Immich, the arr stack and more, by voice. Or add your own in a minute, no code.
 
 <p align="center">
   <img alt="Windows" src="https://img.shields.io/badge/Windows_11-1d1d1f?style=for-the-badge&logo=windows11&logoColor=white">
@@ -90,7 +90,7 @@ Working on the code instead? Clone the repo anywhere and run `.\build.ps1` after
 
 Remove: quit Atticus from the tray, then delete `%LOCALAPPDATA%\Programs\Atticus`, `%LOCALAPPDATA%\Atticus`, `%APPDATA%\Atticus` (your settings and history), the Start menu shortcut, and the `Atticus` value under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`.
 
-## Your homelab
+## Integrations
 
 Settings → Integrations lists every service Atticus knows. Fill in the address, click **Where's my key?** to open the right page on your server, paste the key, **Save & Test**.
 
