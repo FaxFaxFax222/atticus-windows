@@ -284,6 +284,15 @@ class WatchAndBudgetTests(unittest.TestCase):
         self.assertEqual(atticus.label('Bash', {'command': f'{atticus.PICK} "Which?" "a" "b"'}), 'Asking you which one')
         self.assertFalse(atticus.risky(f'{atticus.PICK} "Which file?" "~/delete-me.txt" "~/send.pdf"'))
 
+    def test_clicks_are_as_risky_as_the_button_name(self):
+        with tempfile.TemporaryDirectory() as root, patch.object(atticus.winctl, 'UI_FILE', os.path.join(root, 'ui.json')):
+            items = {'B1': {'name': 'Bold', 'type': 'Button', 'rid': [], 'rect': [0, 0, 1, 1]},
+                     'B2': {'name': 'Send now', 'type': 'Button', 'rid': [], 'rect': [0, 0, 1, 1]}}
+            json.dump({'hwnd': 0, 'items': items}, open(atticus.winctl.UI_FILE, 'w'))
+            self.assertEqual(atticus.risky(f'{atticus.UI} click B1'), '')
+            self.assertEqual(atticus.risky(f'{atticus.UI} click B1 "Send now"'), 'Click "Send now"?')   # by name, in a batch
+            self.assertEqual(atticus.risky(f'{atticus.UI} click B2'), 'Click "Send now"?')
+
     def test_window_rects_fill_halves_and_center_within_the_work_area(self):
         area = (-2560, 0, 2560, 1392)   # a monitor left of the main one
         self.assertEqual(atticus.winctl.rect_for('left', area, (800, 600)), (-2560, 0, 1280, 1392))

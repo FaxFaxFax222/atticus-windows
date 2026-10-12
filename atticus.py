@@ -51,6 +51,7 @@ MEMORY, RECENT = os.path.join(DIR, 'memory.md'), os.path.join(DIR, 'recent.jsonl
 PREFS = os.path.join(DIR, 'settings.json')   # written by the Settings window
 if winctl:
     winctl.APPS_FILE = os.path.join(DIR, 'apps.json')
+    winctl.UI_FILE = os.path.join(DIR, 'ui.json')
 # $5 once, sold on Gumroad. shortcut: the source is public, so a coder can delete this check; fine for a $5 app.
 GUMROAD_PRODUCT = ''   # Gumroad product ID; empty = free
 BUY = 'https://3370759087892.gumroad.com/l/atticus'
@@ -97,7 +98,7 @@ def pref(key, default):
 SHOT = 'atticus-screen-'   # temp file prefix, one per display
 os.environ['PATH'] = os.pathsep.join([os.path.join(HOME, '.local', 'bin'), os.path.join(HOME, '.claude', 'local'), os.environ.get('PATH', '')])
 APP = os.environ.get('ATTICUS_APP') or os.path.join(os.environ.get('LOCALAPPDATA', HOME), 'Programs', 'Atticus', 'Atticus.exe')   # set by Atticus.exe
-FIND, CLIP, MEDIA, TRASH, NOTE, WINDOWS = (ME + f' --{c}' for c in ('find', 'clip', 'media', 'trash', 'note', 'windows'))
+FIND, CLIP, MEDIA, TRASH, NOTE, WINDOWS, UI, KEYS = (ME + f' --{c}' for c in ('find', 'clip', 'media', 'trash', 'note', 'windows', 'ui', 'keys'))
 
 SYSTEM = f"""You are Atticus, a Windows PC helper. The user holds a hotkey, talks, lets go; your reply shows in a small box on the user's screen.
 Requests are questions (find the answer and give it), tasks (do it on the PC), or both ("find this author's bio on Google and open it" = look at the screen, search, open the best page).
@@ -119,6 +120,7 @@ Tools (atticus is a command on your PATH):
 - Open windows: {WINDOWS} ["<app>"] lists app, process and title of each, front first.
 - Type text into the box the user is in (search bar, chat box, doc): {TYPE} "<text>". It goes back to the user's app and pastes. Before you say it is filled, pasted or sent, {LOOK} once and check it landed in the right place.
 - Clipboard: {CLIP}. Music (Spotify or any player): {MEDIA} playpause|next|previous.
+- Inside an app, when nothing above does it (buttons, menus, tabs, fields): {UI} see "<app>" ["title words"] lists them with IDs (B3 Button "Play", E1 Edit "To" = "text", X2 Text "Display is 9"); then {UI} click <ID or exact name>..., several in one call in order ({UI} click "Seven" "Plus" "Two"), or {UI} set <ID> "<text>" to fill a field. IDs last until the next see. Keys: {KEYS} "<app>" ctrl+s (alt+f4, f5, enter…).
 - Spotify: play any song, album, artist or the user's own playlist: {PLAY} "<name, plus artist if known>". Music requests mean Spotify unless the user names another app.
 - To-do, "remind me", "note this": {NOTE} "<text>" keeps it in the user's notes file. For a time ("remind me in 20 minutes"): {WATCH} cmd '[ $(date +%s) -ge <unix time> ]' and say when. "Where are my notes" = {SHOW} "~/Documents/Atticus Notes.md".
 - "Tell me when / watch / monitor X" (a reply finishes, a build or download ends, a page shows something): look once, pick a short phrase on screen that shows the state, then ONE call: {WATCH} "<app>" "<window title words or empty>" <gone|shows> "<phrase>" ["<what to do then, as a request>"]. gone = done when the phrase disappears; shows = done when it appears. It reads that window every 5 s with no AI (it must stay open, covered is fine, not minimized), notifies the user, then runs the request. Without the screen: {WATCH} cmd '<shell test, exit 0 = done>' ["<request>"]; prefer cmd when it fits. A Codex task is done when: tail -n 2 "$(ls -t ~/.codex/sessions/*/*/*/*.jsonl | head -1)" | grep -q task_complete. Reply that you are watching. "Stop watching": {ME} --unwatch.
@@ -168,13 +170,28 @@ RISKY = [('Delete something?', r'\b(rm|rmdir|srm|unlink|shred|trash|mv|del|erase
          ('Buy this?', r'\b(buy|purchase|checkout|check out|place (an |the )?order|pay)\b'),
          ('Change a file?', r'(?<![0-9&])>>?\s*(?!/dev/null|\$null|&|/tmp/|nul\b)\S|\btee\s|curl\b.*\s(-o|--output|-O)\b|\b(set-content|add-content|out-file|new-item|rename-item|copy-item|ren|copy|xcopy|robocopy)\b'),
          ('Run a system command?', r'\bsudo\b|\bkillall\b|\btaskkill\b|\bstop-process\b|\breg(\.exe)?\s+(add|delete|import)|set-itemproperty|new-itemproperty|\bsc(\.exe)?\s+(config|delete|stop|create)|\bschtasks\b|-verb\s+runas|\bnetsh\b|\bsetx\b|set-executionpolicy|\b(shutdown|stop-computer|restart-computer)\b|\bwinget\s+(install|uninstall)')]
-QUIET = (SEARCH, READ, LOOK, FRONT, SHOW, PLACE, PLAY, TYPE, REMEMBER, FORGET, ABOUT, PICK, SET, FIND, CLIP, MEDIA, NOTE, WINDOWS, 'start "" "http', 'start http')   # never delete, send or buy
+QUIET = (SEARCH, READ, LOOK, FRONT, SHOW, PLACE, PLAY, TYPE, REMEMBER, FORGET, ABOUT, PICK, SET, FIND, CLIP, MEDIA, NOTE, WINDOWS, UI + ' see', 'start "" "http', 'start http')   # never delete, send or buy
+
+
+CLICKED = re.compile(r'\b(send|delete|remove|discard|buy|purchase|pay|checkout|place order|order|post|publish|submit|sign out|uninstall|erase|reset|format|empty)\b', re.I)
 
 
 def risky(cmd):
     """-> the question to ask the user, or '' when the command can just run."""
     for part in re.split(r'[;&|\n]', cmd):
         part = part.strip()
+        if part.startswith(UI + ' click') and winctl:   # a click is as risky as the button's name: "Send", "Delete", "Buy now"
+            for i in re.findall(r'"([^"]+)"|\'([^\']+)\'|(\S+)', part[len(UI + ' click'):]):
+                it = winctl.ui_item(next(x for x in i if x)) or {}
+                if CLICKED.search(it.get('name', '')):
+                    return f'Click "{it["name"]}"?'
+            continue
+        if re.match(re.escape(KEYS) + r'\b', part) and re.search(r'\b(delete|del)\b', part, re.I):
+            return 'Delete something?'
+        if re.match(re.escape(KEYS) + r'\b', part) and re.search(r'(ctrl|alt)\+(enter|return|s)\b', part, re.I) and not re.search(r'ctrl\+s\b', part, re.I):
+            return 'Send this?'   # Ctrl+Enter / Alt+S send in most mail and chat apps (Ctrl+S is save)
+        if part.startswith(KEYS):
+            continue
         if part.startswith(QUIET) and '$(' not in part and '`' not in part:
             continue
         for q, rx in RISKY:
@@ -687,6 +704,15 @@ def label(name, inp):
         return 'Noting that down'
     if c.startswith(WINDOWS):
         return 'Checking your windows'
+    if c.startswith(UI + ' see'):
+        return 'Looking at ' + ((re.findall(r'"([^"]+)"', c) or ['the app'])[0])
+    if c.startswith(UI + ' click'):
+        it = winctl and winctl.ui_item((re.findall(r'click\s+["\']?([^"\'\s]+(?: [^"\'\s]+)*?)["\']?(?:\s|$)', c) or [''])[0])
+        return f'Clicking {it["name"]}' if it and it.get('name') else 'Clicking'
+    if c.startswith(UI + ' set'):
+        return 'Filling in a field'
+    if c.startswith(KEYS):
+        return 'Pressing keys'
     if c.startswith(FRONT):
         return 'Bringing ' + (re.findall(r'"([^"]+)"', c) or ['the app'])[0] + ' forward'
     if c.startswith(PLACE):
@@ -1111,6 +1137,14 @@ def main():
             i = rest.index('--in'); where = rest[i + 1] if i + 1 < len(rest) else ''; rest = rest[:i] + rest[i + 2:]
         hits = winctl.find_files(' '.join(a for a in rest if a != '--content'), content, where)
         return print('\n'.join(hits) or 'nothing found')
+    if args[:2] == ['--ui', 'see'] and len(args) > 2:
+        return print(winctl.ui_see(args[2], ' '.join(args[3:])))
+    if args[:2] == ['--ui', 'click'] and len(args) > 2:
+        return print(winctl.ui_click(*args[2:]))
+    if args[:2] == ['--ui', 'set'] and len(args) > 3:
+        return print(winctl.ui_set(args[2], ' '.join(args[3:])))
+    if args[:1] == ['--keys'] and len(args) == 3:
+        return print(winctl.hotkey(args[1], args[2]))
     if args == ['--clip']:
         return print(winctl.get_clip())
     if args[:1] == ['--media'] and len(args) == 2:
@@ -1220,7 +1254,7 @@ def main():
     ws = winctl.find(app) if app else []
     fx = winctl.frame(ws[0]['hwnd'])[0] + 50 if ws else None
     scr = describe(screens(), fx)
-    url = ''   # the browser's address comes in a later version (UI Automation)
+    url = winctl.browser_url(ws[0]['hwnd']) if ws and app in winctl.BROWSERS else ''   # "articles on what I'm reading" needs the page
     you = me_line()
     ctx = (f'About the user: {you} ' if you else '') + f'Front app: {app}. Front window: {win or "?"}.' + (f' Page: {url}.' if url else '') + f' Screens: {scr}. Now: {time.strftime("%a %b %d %Y %I:%M %p")}.'
     mem = relevant_rules(task)
@@ -1293,5 +1327,7 @@ if __name__ == '__main__':
         assert risky('reg add HKCU\\x /v y') == 'Run a system command?' == risky('powershell Stop-Computer') == risky('taskkill /im chrome.exe')
         assert risky('echo x >> ~/.bashrc') == 'Change a file?' == risky('powershell Set-Content a.txt b') and not risky('ls >/dev/null; echo > /tmp/a; dir > $null')
         assert len(SYSTEM.replace('NEVER_RISKY', ASK_FIRST) + ASK_ME + POINTER + LEARN_ME + TEACH) < 10000
+        assert risky(f'{KEYS} Outlook ctrl+enter') == 'Send this?' and not risky(f'{KEYS} Notepad ctrl+s') and not risky(f'{UI} see "Outlook"')
+        assert label('Bash', {'command': f'{UI} see "Spotify"'}) == 'Looking at Spotify' and label('Bash', {'command': f'{KEYS} Notepad ctrl+s'}) == 'Pressing keys'
         sys.exit(print('selftest ok'))
     main()

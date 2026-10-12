@@ -22,6 +22,7 @@ A Windows port of [SaarthurR/atticus-mac](https://github.com/SaarthurR/atticus-m
 | *"Play my late night coding playlist on Spotify."* | Plays it, no clicks. |
 | *"When I say focus mode, close Slack and open my to-do list."* | Remembers it. Next time, two words do it all. |
 | *"Tell me when the download finishes."* | Watches that window with Windows' own OCR, no AI while it waits. |
+| *"In Spotify, turn on shuffle."* | Finds the button through UI Automation and presses it, no mouse needed. |
 
 ## Install
 
@@ -48,21 +49,20 @@ Remove: quit Atticus from the tray, then delete `%LOCALAPPDATA%\Programs\Atticus
 
 - `win/Atticus/` (C#, WinForms + WebView2): the tray app. A low-level keyboard hook for the shortcut, the microphone and Whisper (`Speech.cs`), the overlay (`Overlay.cs`, a port of the Mac app's `App` class), Settings and setup windows, window OCR for watches (`WindowText.cs`).
 - `atticus.py`: the brain, kept close to upstream so fixes merge. Instant commands, learned shortcuts, the system prompt, and `claude -p --model haiku` runs.
-- `winctl.py`: the Windows hands that replace osascript, mdfind, screencapture and pbpaste: displays (with laptop vs monitor from the display configuration), window placement, Start-menu apps, clipboard and typing, screenshots, Windows Search, toasts, Recycle Bin.
+- `winctl.py`: the Windows hands that replace osascript, mdfind, screencapture, pbpaste and Peekaboo: displays (with laptop vs monitor from the display configuration), window placement, Start-menu apps, clipboard and typing, screenshots, Windows Search, toasts, Recycle Bin, and UI Automation for buttons, menus and fields inside apps (`atticus --ui see "Spotify"`, then `atticus --ui click "Shuffle"`), plus the browser's address as context.
 - `ui/`: the upstream overlay, Settings and setup pages. A small shim maps WKWebView's `webkit.messageHandlers` onto WebView2, so the pages run unchanged apart from Windows wording.
 
 The AI's Bash is Git Bash. Its helpers are one short command, `atticus --place …`, `atticus --find …`, from a two-line script Atticus puts on its PATH.
 
 ## Safety
 
-Safe mode (on by default) shows an Allow card before anything deletes, sends, buys, changes a file or runs a system command (`Remove-Item`, `reg add`, `taskkill`, `Stop-Computer`…). `rm`, `del`, `format`, `diskpart` and shutdown are always blocked. Deletes go to the Recycle Bin. Every exact command is in the ask log.
+Safe mode (on by default) shows an Allow card before anything deletes, sends, buys, changes a file or runs a system command (`Remove-Item`, `reg add`, `taskkill`, `Stop-Computer`…). Clicks inside apps are judged by the button's name, so pressing "Send", "Delete" or "Buy now" asks first, and so does Ctrl+Enter. `rm`, `del`, `format`, `diskpart` and shutdown are always blocked. Deletes go to the Recycle Bin. Every exact command is in the ask log.
 
 Unlike the Mac version, there is no sandbox: Claude Code's sandbox isn't available on native Windows, so on Windows safe mode is the Allow check alone.
 
 ## Not on Windows yet
 
-- Clicking inside apps (Peekaboo on the Mac). Next: UI Automation.
-- The browser's current address as context, and file previews in the "which one?" card.
+- File previews in the "which one?" card.
 - Reminders and Notes scripting: notes go to `Documents\Atticus Notes.md`, timed reminders use a watch.
 - Self-update: run `install.ps1` again to update.
 
