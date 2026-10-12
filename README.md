@@ -19,6 +19,7 @@ A Windows port of [SaarthurR/atticus-mac](https://github.com/SaarthurR/atticus-m
 | *"Find my notes about the Tokyo trip."* | Searches your files (Windows Search) and opens the match. |
 | *"What's wrong with this code?"* | Looks at your screen and answers in a line. |
 | *"Reply: sounds good, see you at 7."* | Types it into the app you're in. It never sends. |
+| *"Message Sam on Discord: running 10 minutes late."* | Opens the chat with Ctrl+K and types it; you Allow the send. |
 | *"Play my late night coding playlist on Spotify."* | Plays it, no clicks. |
 | *"When I say focus mode, close Slack and open my to-do list."* | Remembers it. Next time, two words do it all. |
 | *"Tell me when the download finishes."* | Watches that window with Windows' own OCR, no AI while it waits. |
@@ -56,7 +57,7 @@ The AI's Bash is Git Bash. Its helpers are one short command, `atticus --place �
 
 ## Safety
 
-Safe mode (on by default) shows an Allow card before anything deletes, sends, buys, changes a file or runs a system command (`Remove-Item`, `reg add`, `taskkill`, `Stop-Computer`…). Clicks inside apps are judged by the button's name, so pressing "Send", "Delete" or "Buy now" asks first, and so does Ctrl+Enter. `rm`, `del`, `format`, `diskpart` and shutdown are always blocked. Deletes go to the Recycle Bin. Every exact command is in the ask log.
+Safe mode (on by default) shows an Allow card before anything deletes, sends, buys, changes a file or runs a system command (`Remove-Item`, `reg add`, `taskkill`, `Stop-Computer`…). Clicks inside apps are judged by the button's name, so pressing "Send", "Delete" or "Buy now" asks first, and so does Ctrl+Enter. Enter asks too when it would send a message just typed (Discord, Slack, Teams), but not after typing into a search box like Discord's Ctrl+K switcher. `rm`, `del`, `format`, `diskpart` and shutdown are always blocked. Deletes go to the Recycle Bin. Every exact command is in the ask log.
 
 Unlike the Mac version, there is no sandbox: Claude Code's sandbox isn't available on native Windows, so on Windows safe mode is the Allow check alone.
 

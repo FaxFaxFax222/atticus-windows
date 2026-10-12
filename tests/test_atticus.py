@@ -293,6 +293,16 @@ class WatchAndBudgetTests(unittest.TestCase):
             self.assertEqual(atticus.risky(f'{atticus.UI} click B1 "Send now"'), 'Click "Send now"?')   # by name, in a batch
             self.assertEqual(atticus.risky(f'{atticus.UI} click B2'), 'Click "Send now"?')
 
+    def test_enter_asks_only_after_typing_a_message(self):
+        with tempfile.TemporaryDirectory() as ask, patch.dict(os.environ, {'ATTICUS_ASK': ask}):
+            K, T = atticus.KEYS, atticus.TYPE
+            switch = f'{K} Discord ctrl+k; {T} --in Discord "Sam"; {K} Discord enter'
+            self.assertEqual(atticus.risky(switch), '')                        # a search box: Enter just goes there
+            self.assertEqual(atticus.risky(switch + f'; {T} --in Discord "late"; {K} Discord enter'), 'Send this?')
+            for part in (f'{K} Discord ctrl+k', f'{T} x', f'{K} Discord enter', f'{T} late'):   # the same, one call at a time
+                atticus.typing_save(part)
+            self.assertEqual(atticus.risky(f'{K} Discord enter'), 'Send this?')
+
     def test_window_rects_fill_halves_and_center_within_the_work_area(self):
         area = (-2560, 0, 2560, 1392)   # a monitor left of the main one
         self.assertEqual(atticus.winctl.rect_for('left', area, (800, 600)), (-2560, 0, 1280, 1392))

@@ -118,7 +118,8 @@ Tools (atticus is a command on your PATH):
 - Papers: curl -s "http://export.arxiv.org/api/query?search_query=all:<q>&max_results=5"
 - Move, snap or resize a window (does the math): {PLACE} "<app or process>" <left|right|full|center> <laptop|monitor|current|exact screen name from Context> ["part of title"]. Use it for EVERY window move. "Move to my laptop/monitor" = center. Several windows (side by side, a layout) = ONE call, moves joined with +: {PLACE} "Google Chrome" right current + "Windows Terminal" left current; they all move at the same moment. Never sleep between steps: the helpers wait for windows themselves.
 - Open windows: {WINDOWS} ["<app>"] lists app, process and title of each, front first.
-- Type text into the box the user is in (search bar, chat box, doc): {TYPE} "<text>". It goes back to the user's app and pastes. Before you say it is filled, pasted or sent, {LOOK} once and check it landed in the right place.
+- Type text into the box the user is in (search bar, chat box, doc): {TYPE} "<text>". It goes back to the user's app and pastes; {TYPE} --in "<app>" "<text>" for another app. Before you say it is filled, pasted or sent, {LOOK} once and check it landed in the right place.
+- Message someone in Discord, Slack or Teams (their buttons can't be read): ONE call: {KEYS} Discord ctrl+k; {TYPE} --in Discord "<person or channel>"; {KEYS} Discord enter; {TYPE} --in Discord "<message>"; {KEYS} Discord enter. Send only when the user said to send; otherwise stop before the last Enter.
 - Clipboard: {CLIP}. Music (Spotify or any player): {MEDIA} playpause|next|previous.
 - Inside an app, when nothing above does it (buttons, menus, tabs, fields): {UI} see "<app>" ["title words"] lists them with IDs (B3 Button "Play", E1 Edit "To" = "text", X2 Text "Display is 9"); then {UI} click <ID or exact name>..., several in one call in order ({UI} click "Seven" "Plus" "Two"), or {UI} set <ID> "<text>" to fill a field. IDs last until the next see. Keys: {KEYS} "<app>" ctrl+s (alt+f4, f5, enter…).
 - Spotify: play any song, album, artist or the user's own playlist: {PLAY} "<name, plus artist if known>". Music requests mean Spotify unless the user names another app.
@@ -173,13 +174,59 @@ RISKY = [('Delete something?', r'\b(rm|rmdir|srm|unlink|shred|trash|mv|del|erase
 QUIET = (SEARCH, READ, LOOK, FRONT, SHOW, PLACE, PLAY, TYPE, REMEMBER, FORGET, ABOUT, PICK, SET, FIND, CLIP, MEDIA, NOTE, WINDOWS, UI + ' see', 'start "" "http', 'start http')   # never delete, send or buy
 
 
+# Enter after typing a message sends it in chat apps (Discord, Slack, Teams…); Enter after typing into a search box
+# (Ctrl+K switcher, Ctrl+F, the address bar) just goes there. Typing records which it was, per ask, so the gate can tell.
+SEARCH_KEYS = {'ctrl+k', 'ctrl+f', 'ctrl+l', 'ctrl+e', 'ctrl+t', 'ctrl+p', 'ctrl+g', 'alt+d', 'f6', 'ctrl+shift+f', 'ctrl+shift+k'}
+
+
+def typing_file():
+    return os.path.join(os.environ.get('ATTICUS_ASK') or DIR, 'typing.json')
+
+
+def typing_state():
+    """{'typed': text waiting for Enter?, 'search': was it typed into a search box?, 'last': the last key combo}"""
+    try:
+        return {'typed': False, 'search': False, 'last': '', **json.load(open(typing_file(), encoding='utf-8'))}
+    except (OSError, ValueError):
+        return {'typed': False, 'search': False, 'last': ''}
+
+
+def typing_step(state, part):
+    """The state after one helper call; returns (new state, True if this call is an Enter that sends typed text)."""
+    st = dict(state)
+    if part.startswith(KEYS):
+        combo = (part.split() or [''])[-1].strip('"\'').lower()
+        if combo in ('enter', 'return'):
+            sends = st['typed'] and not st['search']
+            st.update(typed=False, search=False, last=combo)
+            return st, sends
+        st['last'] = combo
+    elif part.startswith(TYPE):
+        st.update(typed=True, search=st['last'] in SEARCH_KEYS)
+    elif part.startswith(UI + ' set'):
+        it = winctl and winctl.ui_item((part[len(UI + ' set'):].split() or [''])[0].strip('"\'')) or {}
+        st.update(typed=True, search=bool(re.search(r'search|find|address|filter|jump|switch', it.get('name', ''), re.I)))
+    return st, False
+
+
+def typing_save(part):
+    try:
+        json.dump(typing_step(typing_state(), part)[0], open(typing_file(), 'w', encoding='utf-8'))
+    except OSError:
+        pass
+
+
 CLICKED = re.compile(r'\b(send|delete|remove|discard|buy|purchase|pay|checkout|place order|order|post|publish|submit|sign out|uninstall|erase|reset|format|empty)\b', re.I)
 
 
 def risky(cmd):
     """-> the question to ask the user, or '' when the command can just run."""
+    state = typing_state()
     for part in re.split(r'[;&|\n]', cmd):
         part = part.strip()
+        state, sends = typing_step(state, part)
+        if sends:
+            return 'Send this?'   # Enter right after typing a message
         if part.startswith(UI + ' click') and winctl:   # a click is as risky as the button's name: "Send", "Delete", "Buy now"
             for i in re.findall(r'"([^"]+)"|\'([^\']+)\'|(\S+)', part[len(UI + ' click'):]):
                 it = winctl.ui_item(next(x for x in i if x)) or {}
@@ -1129,8 +1176,12 @@ def main():
                     break
         time.sleep(0.5)   # the window draws before the picture
         return print('\n'.join(f'{label}: {path}' for path, label in look()) or 'no screenshot available')
-    if args[:1] == ['--type']:   # paste into the focused field of the user's app, then put the user's clipboard back
-        return print(winctl.paste_into(front()[0], ' '.join(args[1:])))
+    if args[:1] == ['--type']:   # paste into the focused field of the user's app (or --in <app>), then put the user's clipboard back
+        rest = args[1:]
+        app = rest[1] if rest[:1] == ['--in'] and len(rest) > 1 else front()[0]
+        rest = rest[2:] if rest[:1] == ['--in'] else rest
+        typing_save(TYPE)
+        return print(winctl.paste_into(app, ' '.join(rest)))
     if args[:1] == ['--find']:
         rest, content, where = args[1:], '--content' in args, ''
         if '--in' in rest:
@@ -1142,8 +1193,10 @@ def main():
     if args[:2] == ['--ui', 'click'] and len(args) > 2:
         return print(winctl.ui_click(*args[2:]))
     if args[:2] == ['--ui', 'set'] and len(args) > 3:
+        typing_save(f'{UI} set {args[2]}')
         return print(winctl.ui_set(args[2], ' '.join(args[3:])))
     if args[:1] == ['--keys'] and len(args) == 3:
+        typing_save(f'{KEYS} {args[1]} {args[2]}')
         return print(winctl.hotkey(args[1], args[2]))
     if args == ['--clip']:
         return print(winctl.get_clip())
@@ -1327,6 +1380,9 @@ if __name__ == '__main__':
         assert risky('reg add HKCU\\x /v y') == 'Run a system command?' == risky('powershell Stop-Computer') == risky('taskkill /im chrome.exe')
         assert risky('echo x >> ~/.bashrc') == 'Change a file?' == risky('powershell Set-Content a.txt b') and not risky('ls >/dev/null; echo > /tmp/a; dir > $null')
         assert len(SYSTEM.replace('NEVER_RISKY', ASK_FIRST) + ASK_ME + POINTER + LEARN_ME + TEACH) < 10000
+        route = f'{KEYS} Discord ctrl+k; {TYPE} --in Discord "Sam"; {KEYS} Discord enter; {TYPE} --in Discord "late"'
+        os.environ['ATTICUS_ASK'] = tempfile.mkdtemp()
+        assert not risky(route) and risky(route + f'; {KEYS} Discord enter') == 'Send this?' and not risky(f'{KEYS} Chrome enter')
         assert risky(f'{KEYS} Outlook ctrl+enter') == 'Send this?' and not risky(f'{KEYS} Notepad ctrl+s') and not risky(f'{UI} see "Outlook"')
         assert label('Bash', {'command': f'{UI} see "Spotify"'}) == 'Looking at Spotify' and label('Bash', {'command': f'{KEYS} Notepad ctrl+s'}) == 'Pressing keys'
         sys.exit(print('selftest ok'))

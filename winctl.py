@@ -796,6 +796,7 @@ def hotkey(app, combo):
         focus_app(app)
         time.sleep(0.2)
     keys(*vks)
+    time.sleep(0.35)   # the app reacts (a switcher opens, a channel loads) before the next step
     return f'pressed {combo}'
 
 
