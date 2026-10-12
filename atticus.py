@@ -1152,7 +1152,8 @@ def main():
         signal.signal(signal.SIGTERM, stop_workers)   # Atticus.exe also ends the whole tree (a job object)
     if args[:1] == ['--watch'] and (len(args) in (5, 6) and args[3] in ('gone', 'shows') or len(args) in (3, 4) and args[1] == 'cmd'):
         os.makedirs(WATCHING, exist_ok=True)   # the watcher runs on after this ask ends
-        spawn = lambda flags: subprocess.Popen([sys.executable, SELF, '--watching', *args[1:]], creationflags=flags,
+        env = {k: v for k, v in os.environ.items() if k not in ('ATTICUS_ASK', 'ATTICUS_COMMIT', 'ATTICUS_UI', 'ATTICUS_LIVE')}   # it runs later, on its own: its follow-up may ask the AI
+        spawn = lambda flags: subprocess.Popen([sys.executable, SELF, '--watching', *args[1:]], creationflags=flags, env=env,
                                                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, close_fds=True)
         try:
             w = spawn(0x08000000 | 0x00000200 | 0x01000000)   # no window, own group, out of the ask's job so it outlives the ask
@@ -1315,6 +1316,8 @@ def main():
             return print(f'could not read: {e}')
     if args[:1] in (['--help'], ['-h']) or (args and args[0].startswith('--') and args != ['--wait'] and args != ['--plan']):
         return print(__doc__.strip() if args[0] in ('--help', '-h') else f'unknown option {args[0]}. ' + __doc__.strip())   # never an AI ask: the AI's own `atticus --help` must not start another one
+    if os.environ.get('ATTICUS_ASK') and args != ['--wait']:   # inside an AI run (its helpers carry ATTICUS_ASK): never start another one
+        return print('Atticus helpers only here; a request cannot start another request. Run one of: ' + ', '.join(sorted({c.split()[1] for c in QUIET if c.startswith(ME + ' ')})))
     warm = start_claude() if args == ['--wait'] else None   # Atticus.app: started at key-down, request comes on stdin at release
     shots = []
     snap = threading.Thread(target=lambda: shots.extend(look()), daemon=True)   # the screen as the user pressed the keys; sent only if the words are about it
@@ -1434,6 +1437,11 @@ if __name__ == '__main__':
         with contextlib.redirect_stdout(io.StringIO()) as out:
             sys.argv = ['atticus.py', '--help']; main()
         assert 'atticus.py --place' in out.getvalue()   # help is text, not a request
+        os.environ['ATTICUS_ASK'] = tempfile.mkdtemp()
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            sys.argv = ['atticus.py', 'what time is it']; main()
+        assert 'cannot start another request' in out.getvalue()   # no AI inside an AI run
+        del os.environ['ATTICUS_ASK']
         route = f'{KEYS} Discord ctrl+k; {TYPE} --in Discord "Sam"; {KEYS} Discord enter; {TYPE} --in Discord "late"'
         os.environ['ATTICUS_ASK'] = tempfile.mkdtemp()
         assert not risky(route) and risky(route + f'; {KEYS} Discord enter') == 'Send this?' and not risky(f'{KEYS} Chrome enter')
