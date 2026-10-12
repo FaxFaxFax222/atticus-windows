@@ -98,7 +98,7 @@ def pref(key, default):
 SHOT = 'atticus-screen-'   # temp file prefix, one per display
 os.environ['PATH'] = os.pathsep.join([os.path.join(HOME, '.local', 'bin'), os.path.join(HOME, '.claude', 'local'), os.environ.get('PATH', '')])
 APP = os.environ.get('ATTICUS_APP') or os.path.join(os.environ.get('LOCALAPPDATA', HOME), 'Programs', 'Atticus', 'Atticus.exe')   # set by Atticus.exe
-FIND, CLIP, MEDIA, TRASH, NOTE, WINDOWS, UI, KEYS = (ME + f' --{c}' for c in ('find', 'clip', 'media', 'trash', 'note', 'windows', 'ui', 'keys'))
+FIND, CLIP, MEDIA, TRASH, NOTE, WINDOWS, UI, KEYS, JOPLIN = (ME + f' --{c}' for c in ('find', 'clip', 'media', 'trash', 'note', 'windows', 'ui', 'keys', 'joplin'))
 
 SYSTEM = f"""You are Atticus, a Windows PC helper. The user holds a hotkey, talks, lets go; your reply shows in a small box on the user's screen.
 Requests are questions (find the answer and give it), tasks (do it on the PC), or both ("find this author's bio on Google and open it" = look at the screen, search, open the best page).
@@ -140,6 +140,10 @@ NEVER = ('Full access: delete, send, post or buy when the user clearly asks; jus
 ASK_FIRST = ('Delete, send, post or buy only when the user clearly asks; the user sees an Allow / Don\'t Allow card first, so just run it, '
              f'never ask in words. Files: {TRASH} "<path>" (to the Recycle Bin), never rm or del. If the user says no, stop and say it was not done.')
 
+# Only when the user has Joplin with its API on: then "note this" and "my notes" mean Joplin, not the notes file.
+JOPLIN_TOOLS = f"""
+Joplin is the user's notes app: "note this", "add to my notes", "what did I write about…" go to Joplin, not {NOTE}. {JOPLIN} new "<title>" "<markdown>" [--in "<notebook>"] | find "<words>" | read "<note>" | add "<note>" "<text>" | open "<note>" | notebooks. Notes by title or id; never click in Joplin."""
+
 LEARN_ME = f"""
 About the user: if they state a lasting fact about themselves that helps day to day (their name, city, school or job,
 favorite apps, units), save it in 8 words or fewer with {ABOUT} "<fact>". Never one-off or private details (health, money, passwords)."""
@@ -171,7 +175,7 @@ RISKY = [('Delete something?', r'\b(rm|rmdir|srm|unlink|shred|trash|mv|del|erase
          ('Buy this?', r'\b(buy|purchase|checkout|check out|place (an |the )?order|pay)\b'),
          ('Change a file?', r'(?<![0-9&])>>?\s*(?!/dev/null|\$null|&|/tmp/|nul\b)\S|\btee\s|curl\b.*\s(-o|--output|-O)\b|\b(set-content|add-content|out-file|new-item|rename-item|copy-item|ren|copy|xcopy|robocopy)\b'),
          ('Run a system command?', r'\bsudo\b|\bkillall\b|\btaskkill\b|\bstop-process\b|\breg(\.exe)?\s+(add|delete|import)|set-itemproperty|new-itemproperty|\bsc(\.exe)?\s+(config|delete|stop|create)|\bschtasks\b|-verb\s+runas|\bnetsh\b|\bsetx\b|set-executionpolicy|\b(shutdown|stop-computer|restart-computer)\b|\bwinget\s+(install|uninstall)')]
-QUIET = (SEARCH, READ, LOOK, FRONT, SHOW, PLACE, PLAY, TYPE, REMEMBER, FORGET, ABOUT, PICK, SET, FIND, CLIP, MEDIA, NOTE, WINDOWS, UI + ' see', 'start "" "http', 'start http')   # never delete, send or buy
+QUIET = (SEARCH, READ, LOOK, FRONT, SHOW, PLACE, PLAY, TYPE, REMEMBER, FORGET, ABOUT, PICK, SET, FIND, CLIP, MEDIA, NOTE, WINDOWS, UI + ' see', JOPLIN, 'start "" "http', 'start http')   # never delete, send or buy
 
 
 # Enter after typing a message sends it in chat apps (Discord, Slack, Teams…); Enter after typing into a search box
@@ -760,6 +764,10 @@ def label(name, inp):
         return 'Filling in a field'
     if c.startswith(KEYS):
         return 'Pressing keys'
+    if c.startswith(JOPLIN):
+        verb = (c[len(JOPLIN):].split() or [''])[0]
+        return {'new': 'Writing a note in Joplin', 'add': 'Adding to your note', 'find': 'Searching your notes', 'read': 'Reading your note',
+                'open': 'Opening your note'}.get(verb, 'Checking Joplin')
     if c.startswith(FRONT):
         return 'Bringing ' + (re.findall(r'"([^"]+)"', c) or ['the app'])[0] + ' forward'
     if c.startswith(PLACE):
@@ -943,7 +951,7 @@ def start_claude():
     claude = shutil.which('claude')
     if not claude:
         return None
-    system = SYSTEM.replace('NEVER_RISKY', ASK_FIRST if pref('safe', True) else NEVER) + (ASK_ME if pref('askMe', True) else '') + (POINTER if pref('pointer', False) else '') + (LEARN_ME if pref('learnMe', True) else '') + (TEACH if pref('tips', True) else '')
+    system = SYSTEM.replace('NEVER_RISKY', ASK_FIRST if pref('safe', True) else NEVER) + (ASK_ME if pref('askMe', True) else '') + (POINTER if pref('pointer', False) else '') + (LEARN_ME if pref('learnMe', True) else '') + (TEACH if pref('tips', True) else '') + (JOPLIN_TOOLS if winctl and winctl._joplin_settings().get('api.token') else '')
     settings = {}
     ask = tempfile.mkdtemp(prefix='atticus-ask-')   # the Allow card (safe mode) and the choices card talk through it
     atexit.register(shutil.rmtree, ask, True)   # however this run ends
@@ -1198,6 +1206,8 @@ def main():
     if args[:1] == ['--keys'] and len(args) == 3:
         typing_save(f'{KEYS} {args[1]} {args[2]}')
         return print(winctl.hotkey(args[1], args[2]))
+    if args[:1] == ['--joplin']:
+        return print(winctl.joplin_cmd(args[1:]))
     if args == ['--clip']:
         return print(winctl.get_clip())
     if args[:1] == ['--media'] and len(args) == 2:
@@ -1379,7 +1389,7 @@ if __name__ == '__main__':
         assert risky('powershell -c "Send-MailMessage -To a"') == 'Send this?' == risky('curl -s -X POST https://x') and not risky("curl -s 'wttr.in/x?format=%l'")
         assert risky('reg add HKCU\\x /v y') == 'Run a system command?' == risky('powershell Stop-Computer') == risky('taskkill /im chrome.exe')
         assert risky('echo x >> ~/.bashrc') == 'Change a file?' == risky('powershell Set-Content a.txt b') and not risky('ls >/dev/null; echo > /tmp/a; dir > $null')
-        assert len(SYSTEM.replace('NEVER_RISKY', ASK_FIRST) + ASK_ME + POINTER + LEARN_ME + TEACH) < 10000
+        assert len(SYSTEM.replace('NEVER_RISKY', ASK_FIRST) + ASK_ME + POINTER + LEARN_ME + TEACH + JOPLIN_TOOLS) < 10000
         route = f'{KEYS} Discord ctrl+k; {TYPE} --in Discord "Sam"; {KEYS} Discord enter; {TYPE} --in Discord "late"'
         os.environ['ATTICUS_ASK'] = tempfile.mkdtemp()
         assert not risky(route) and risky(route + f'; {KEYS} Discord enter') == 'Send this?' and not risky(f'{KEYS} Chrome enter')

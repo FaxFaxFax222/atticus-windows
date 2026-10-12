@@ -23,6 +23,7 @@ A Windows port of [SaarthurR/atticus-mac](https://github.com/SaarthurR/atticus-m
 | *"Play my late night coding playlist on Spotify."* | Plays it, no clicks. |
 | *"When I say focus mode, close Slack and open my to-do list."* | Remembers it. Next time, two words do it all. |
 | *"Tell me when the download finishes."* | Watches that window with Windows' own OCR, no AI while it waits. |
+| *"Note in Joplin: call the landlord about the heater."* | Writes it through Joplin's own API (turn on Tools → Options → Web Clipper). Find, read and add to notes too. |
 | *"In Spotify, turn on shuffle."* | Finds the button through UI Automation and presses it, no mouse needed. |
 
 ## Install

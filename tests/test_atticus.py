@@ -303,6 +303,18 @@ class WatchAndBudgetTests(unittest.TestCase):
                 atticus.typing_save(part)
             self.assertEqual(atticus.risky(f'{K} Discord enter'), 'Send this?')
 
+    def test_joplin_new_note_goes_in_the_named_notebook(self):
+        calls = []
+        def api(method, path, body=None, **q):
+            calls.append((method, path, body))
+            if path == 'folders':
+                return {'items': [{'id': 'f1', 'title': 'Work Notes'}], 'has_more': False}
+            return {'id': 'n1', 'title': body['title']}
+        with patch.object(atticus.winctl, 'joplin', side_effect=api):
+            self.assertIn('created note "Plan"', atticus.winctl.joplin_cmd(['new', 'Plan', 'step one', '--in', 'work']))
+            self.assertEqual(calls[-1], ('POST', 'notes', {'title': 'Plan', 'body': 'step one', 'parent_id': 'f1'}))
+            self.assertIn('Notebooks: Work Notes', atticus.winctl.joplin_cmd(['new', 'Plan', 'x', '--in', 'Recipes']))   # never a guess
+
     def test_window_rects_fill_halves_and_center_within_the_work_area(self):
         area = (-2560, 0, 2560, 1392)   # a monitor left of the main one
         self.assertEqual(atticus.winctl.rect_for('left', area, (800, 600)), (-2560, 0, 1280, 1392))
