@@ -1,14 +1,32 @@
-# Atticus for Windows
+<h1 align="center">Atticus for Windows</h1>
 
-Hold <kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>Space</kbd>, say what you need, let go.
-Atticus moves your windows, finds your files, reads your screen and gets it done.
+<p align="center"><b>Your whole PC, one sentence away.</b></p>
 
-A Windows port of [SaarthurR/atticus-mac](https://github.com/SaarthurR/atticus-mac). Same brain, same overlay, same idea:
+<p align="center">
+  Hold <kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>Space</kbd>, say what you need, let go.<br>
+  Atticus moves your windows, finds your files, reads your screen and gets it done.
+</p>
 
-- **Fast.** Simple asks skip the AI: "open Notepad", "Chrome on the left of my monitor", "search for pizza near me". Ask for an action once and Atticus learns it, so next time it runs with no AI and for free.
-- **No API key.** It runs on the Claude Pro or Max plan you already have, through Claude Code.
-- **Remembers you.** Say "remember…" and every ask after that knows it. It picks up who you are and fixes its own mistakes when you correct it.
-- **Private ears.** Whisper turns your voice into text on your PC. Audio never leaves it.
+<p align="center">
+  <b>⚡ Fast</b> &nbsp;·&nbsp; <b>🔑 No API key</b> &nbsp;·&nbsp; <b>🧠 Remembers you</b> &nbsp;·&nbsp; <b>🏠 Runs your homelab</b> &nbsp;·&nbsp; <b>Free and open source</b>
+</p>
+
+- **Fast.** Simple asks skip the AI: an app opens in a blink. Ask for an action once and Atticus learns it, so next time it runs with no AI and for free.
+- **No API key.** It runs on the Claude Pro or Max plan you already have, through Claude Code. Nothing to sign up for, no key to paste, no extra bill.
+- **Remembers you.** Say "remember…" and every ask after that knows it. It picks up who you are (your name, your apps) and fixes its own mistakes when you correct it.
+- **Runs your homelab.** Jellyfin, Home Assistant, Immich, the arr stack and more, by voice. Or add your own in a minute, no code.
+
+<p align="center">
+  <img alt="Windows" src="https://img.shields.io/badge/Windows_11-1d1d1f?style=for-the-badge&logo=windows11&logoColor=white">
+  <img alt="C#" src="https://img.shields.io/badge/.NET_10-1d1d1f?style=for-the-badge&logo=dotnet&logoColor=white">
+  <img alt="Python" src="https://img.shields.io/badge/Python-1d1d1f?style=for-the-badge&logo=python&logoColor=white">
+  <img alt="Claude" src="https://img.shields.io/badge/Claude_Haiku-1d1d1f?style=for-the-badge&logo=anthropic&logoColor=white">
+  <img alt="Cost" src="https://img.shields.io/badge/~0.1%C2%A2_per_ask-1d1d1f?style=for-the-badge">
+</p>
+
+<p align="center">A Windows port of <a href="https://github.com/SaarthurR/atticus-mac">Atticus for Mac</a> by SaarthurR. Same brain, same box, same idea.</p>
+
+<br>
 
 ## Just ask
 
@@ -16,22 +34,47 @@ A Windows port of [SaarthurR/atticus-mac](https://github.com/SaarthurR/atticus-m
 |---|---|
 | *"Code on my big screen, Chrome and Terminal on the laptop."* | Arranges three windows across two displays. |
 | *"Open Spotify."* · *"Notepad on the left."* | Runs instantly, with no AI at all. |
-| *"Find my notes about the Tokyo trip."* | Searches your files (Windows Search) and opens the match. |
+| *"Find my notes about the Tokyo trip."* | Searches your files by what's inside them and opens the match. |
 | *"What's wrong with this code?"* | Looks at your screen and answers in a line. |
 | *"Reply: sounds good, see you at 7."* | Types it into the app you're in. It never sends. |
-| *"Message Sam on Discord: running 10 minutes late."* | Opens the chat with Ctrl+K and types it; you Allow the send. |
-| *"Play my late night coding playlist on Spotify."* | Plays it, no clicks. |
+| *"Message Sam on Discord: running 10 minutes late."* | Opens the chat and types it. You Allow the send. |
+| *"In Spotify, turn on shuffle."* | Finds the button and presses it. Your mouse stays put. |
+| *"What should I keep watching?"* | Checks Jellyfin and picks up where you left off. |
+| *"Is there motion in the office?"* | Asks Home Assistant. |
 | *"When I say focus mode, close Slack and open my to-do list."* | Remembers it. Next time, two words do it all. |
-| *"Tell me when the download finishes."* | Watches that window with Windows' own OCR, no AI while it waits. |
-| *"Note in Joplin: call the landlord about the heater."* | Writes it through Joplin's own API (turn on Tools → Options → Web Clipper). Find, read and add to notes too. |
-| *"In Spotify, turn on shuffle."* | Finds the button through UI Automation and presses it, no mouse needed. |
+
+## Why Atticus
+
+<table>
+<tr>
+<td width="33%" valign="top"><h3>Fast</h3>Opening apps and sites, moving windows, web searches and music skip the AI entirely. Actions you ask for once (opening apps, moving windows, playing music) become learned shortcuts: replayed with no AI and no wait.</td>
+<td width="33%" valign="top"><h3>No API key</h3>Runs on the Claude plan you already have, through <code>claude -p</code>. About 0.1¢ of plan usage per ask, priced at API list rates. Atticus itself is free.</td>
+<td width="33%" valign="top"><h3>Remembers you</h3>"Remember: open means bring it to the front." Saved rules go with every ask. It learns lasting facts about you, and when you correct it, it saves a rule so it gets it right next time. Edit all of it in Settings.</td>
+</tr>
+<tr>
+<td valign="top"><h3>Private ears</h3>Whisper turns your voice into text on your PC. Audio never leaves it.</td>
+<td valign="top"><h3>Your whole PC</h3>Apps, windows across every display, files (Windows Search), the clipboard, the web and the screen. Buttons and menus inside apps through Windows' own UI Automation, with no mouse moves.</td>
+<td valign="top"><h3>Safe by default</h3>Before anything deletes, sends, buys, changes a file or runs a system command, Atticus asks you first. Pressing a button named "Send" or "Delete" asks too. <code>rm</code>, <code>del</code>, <code>format</code> and shutdown are always blocked. Deletes go to the Recycle Bin. Every exact command is in the ask log.</td>
+</tr>
+</table>
+
+<details>
+<summary><b>How the shortcut and the box work</b></summary>
+<br>
+
+Choose **Hold to talk** or **Press to toggle** in Settings → General → Shortcut behavior. Hold mode sends when you release. Toggle mode starts on the first press and sends on the second; pauses keep listening. Pressing the shortcut while Atticus answers stops it; during spoken playback it stops the voice. Esc cancels listening without sending. Toggle recordings reach a review screen after 60 seconds, rather than sending automatically.
+
+Click any answer to copy it. Click your request to edit and ask again, or press ↑ in an empty typing box to recall the latest one. Drag the box anywhere; drag its edges to resize it. It never shows in screen shares, recordings or Atticus's own screenshots.
+
+Your words appear live while you talk. When you let go, Whisper reads the whole recording once more, and that final text is what Atticus acts on: AI tools and learned shortcuts wait for it. Simple commands can run mid-sentence with Instant commands and Act while I'm talking on (Settings → Intelligence).
+
+</details>
 
 ## Install
 
 You need:
-- **Windows 11** (Windows 10 2004+ works, without the glass look)
+- **Windows 11** (Windows 10 works too, without the glass look)
 - **A paid Claude plan** (Pro or Max) and [Claude Code](https://claude.com/claude-code). No Claude Code yet? The setup window installs it and signs you in.
-- Git for Windows and Python 3.11+ (the installer gets them with winget if missing)
 
 Paste this in PowerShell:
 
@@ -39,67 +82,73 @@ Paste this in PowerShell:
 irm https://raw.githubusercontent.com/FindlayHi/atticus-windows/main/install.ps1 | iex
 ```
 
-It downloads Atticus to `%USERPROFILE%\.atticus`, builds `%LOCALAPPDATA%\Programs\Atticus\Atticus.exe` (the .NET 10 SDK is fetched per user if missing, no admin), and opens it. Atticus starts at login (Settings → General) and updates itself: every 6 hours it pulls from GitHub, builds the new version beside the running one, and swaps it in when you're not using it (turn that off in Settings → About & Updates). Local edits in `.atticus` or a failed build leave the running version alone.
+It checks your PC (getting Git and Python with winget if they're missing), downloads Atticus to `%USERPROFILE%\.atticus`, builds it, and opens it. No admin needed. Atticus starts at login and updates itself from there: every few hours it pulls the new version, builds it beside the running one, and swaps it in when you're not using it (turn that off in Settings → About & Updates).
 
-Working on the code instead? Clone anywhere and run `powershell -ExecutionPolicy Bypass -File .\build.ps1` after each change.
+The first launch opens a setup window: your Claude plan, the microphone, and the speech model (about 150 MB, once). After that, Atticus lives in the tray. Open it from Start ("Atticus") for Settings: shortcut, sounds, model, speed, screen, memory, integrations and usage.
 
-The first launch opens a setup window: Claude sign-in, the microphone, and the speech model (~150 MB, once). After that Atticus lives in the tray. Open it from Start ("Atticus") for Settings.
+Working on the code instead? Clone the repo anywhere and run `.\build.ps1` after each change.
 
 Remove: quit Atticus from the tray, then delete `%LOCALAPPDATA%\Programs\Atticus`, `%LOCALAPPDATA%\Atticus`, `%APPDATA%\Atticus` (your settings and history), the Start menu shortcut, and the `Atticus` value under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`.
 
-## How it works
+## Your homelab
 
-- `win/Atticus/` (C#, WinForms + WebView2): the tray app. A low-level keyboard hook for the shortcut, the microphone and Whisper (`Speech.cs`), the overlay (`Overlay.cs`, a port of the Mac app's `App` class), Settings and setup windows, window OCR for watches (`WindowText.cs`).
-- `atticus.py`: the brain, kept close to upstream so fixes merge. Instant commands, learned shortcuts, the system prompt, and `claude -p --model haiku` runs.
-- `winctl.py`: the Windows hands that replace osascript, mdfind, screencapture, pbpaste and Peekaboo: displays (with laptop vs monitor from the display configuration), window placement, Start-menu apps, clipboard and typing, screenshots, Windows Search, toasts, Recycle Bin, and UI Automation for buttons, menus and fields inside apps (`atticus --ui see "Spotify"`, then `atticus --ui click "Shuffle"`), plus the browser's address as context.
-- `ui/`: the upstream overlay, Settings and setup pages. A small shim maps WKWebView's `webkit.messageHandlers` onto WebView2, so the pages run unchanged apart from Windows wording.
+Settings → Integrations lists every service Atticus knows. Fill in the address, click **Where's my key?** to open the right page on your server, paste the key, **Save & Test**.
 
-The AI's Bash is Git Bash. Its helpers are one short command, `atticus --place …`, `atticus --find …`, from a two-line script Atticus puts on its PATH.
-
-## Integrations
-
-Settings → Integrations lists every service Atticus knows, with what it lets you say, the fields to fill in (with example addresses), and a "Where's my key?" button that opens the right page on your server. Set up the ones you run:
-
-| Service | Say things like |
+| Service | Say |
 |---|---|
-| **Home Assistant** (MCP) | "turn off the office lights", "is there motion in the office?", "set the heat to 21" |
-| **Jellyfin** | "what should I keep watching?", "play Breaking Bad on the living room TV" |
-| **Seerr** | "add Severance season 2", "what have I requested?" |
-| **Sonarr/Radarr** | "what's downloading?", "when's the next Abbott Elementary?" |
-| **Immich** | "show me photos from the cottage last summer", "open the Japan album" |
-| **Nextcloud** | "find my lease PDF", "share the trip photos folder", "what's on my calendar this week?" |
-| **Paperless** | "find my car insurance policy", "when does the fridge warranty end?" |
-| **n8n** | "run the morning report": every workflow with a Webhook trigger becomes a command |
+| **Home Assistant** | "Turn off the office lights" · "Is the garage open?" |
+| **Jellyfin** | "What should I keep watching?" · "Play Breaking Bad on the living room TV" |
+| **Seerr** | "Add Severance season 2" · "What have I requested?" |
+| **Sonarr / Radarr** | "What's downloading?" · "When's the next Abbott Elementary?" |
+| **Immich** | "Show me photos from the cottage last summer" |
+| **Nextcloud** | "Find my lease PDF" · "What's on my calendar this week?" |
+| **Paperless** | "Find my car insurance policy" |
+| **n8n** | "Run the morning report" (any workflow with a Webhook trigger) |
+| **Joplin** | "Note this: call the landlord about the heater" |
 
-Keys live in Windows Credential Manager. The AI only hears about a service when your request is about it, so each one costs nothing until you use it. Locks, doors, garages and alarms, public share links and n8n runs wait for your Allow.
+A service is only mentioned to the AI when your ask is about it, so each one costs nothing until you use it. Keys stay in Windows Credential Manager.
 
-**Plugins or MCP?** Most services are small plugins: one line of help for the AI, one command. Home Assistant goes through its own MCP server instead (its Assist tools already know your devices); Atticus connects to it only for requests about the home, because MCP tool lists add to every request they ride on.
+**Add your own, no code.** Settings → Integrations → Add your own takes any **MCP server** or any app with a **web API**: its address, its key, one line about what it is, and the words that mean it. Claude already knows the APIs of most self-hosted apps, so "Mealie, at http://server:9000" is usually all it needs. Reading runs freely; anything that changes something asks first.
 
-**Add your own, no code:** Settings → Integrations → Add your own takes any **MCP server** (address, token, the words that mean it) or any app with a **web API** (address, how its key is sent, one line about what it is, optionally its docs). Claude already knows the APIs of most self-hosted apps, so "Mealie at http://server:9000" is usually enough for "what's on the meal plan tonight?". Reading runs freely; anything that changes something waits for your Allow.
+**Or write one.** A Python file in your integrations folder (linked from Settings) loads next to the built-in ones and survives updates. Copy the shape of any file in `integrations/`. Good ones belong in a pull request.
 
-**Or write one:** a `.py` file in your integrations folder (`%APPDATA%\Atticus\integrations`, linked from Settings) loads next to the built-in ones and survives updates. Same shape as the files in `integrations/` (see `integrations/__init__.py`), or `MCP()` returning an HTTP MCP server like `integrations/homeassistant.py`. Good ones belong in a pull request.
+## Watch for me
 
-## Safety
-
-Safe mode (on by default) shows an Allow card before anything deletes, sends, buys, changes a file or runs a system command (`Remove-Item`, `reg add`, `taskkill`, `Stop-Computer`…). Clicks inside apps are judged by the button's name, so pressing "Send", "Delete" or "Buy now" asks first, and so does Ctrl+Enter. Enter asks too when it would send a message just typed (Discord, Slack, Teams), but not after typing into a search box like Discord's Ctrl+K switcher. `rm`, `del`, `format`, `diskpart` and shutdown are always blocked. Deletes go to the Recycle Bin. Every exact command is in the ask log.
-
-Unlike the Mac version, there is no sandbox: Claude Code's sandbox isn't available on native Windows, so on Windows safe mode is the Allow check alone.
-
-## Not on Windows yet
-
-- File previews in the "which one?" card.
-- Reminders and Notes scripting: notes go to `Documents\Atticus Notes.md`, timed reminders use a watch.
-
-## Test
-
-The app checks for updates at launch + 1 min and every 6 hours; `Settings → About & Updates → Check Now` checks at once.
-
-`python -m unittest discover -s tests -v` and `python atticus.py --selftest` (with `PYTHONUTF8=1`), plus `Atticus.exe --selftest` after building. `Atticus.exe --transcribe <16 kHz wav>` runs a file through the speech path; `Atticus.exe --text "<app>" [title words]` prints what OCR reads in that window. `ATTICUS_DEMO="<request>"` runs one request at launch without the mic; `ATTICUS_CAPTURABLE=1` lets screenshots see the box (it hides from capture by default).
+Say "tell me when the download is done" or "watch this page until it says shipped". Atticus sets it up once, then checks every 5 seconds on your PC with no AI, so waiting is free. It reads the window with Windows' own text recognition, so the window must stay open (covered is fine, minimized is not). When it fires you get a notification, and it runs a follow-up if you asked for one. Coding agents like Codex are watched through their own log, with no screen at all. Say "stop watching" to cancel.
 
 ## Budget
 
-Same limits as upstream: instant commands $0; AI asks a median under $0.002 and 6 s over the last 50 (`python atticus.py --budget`); a system prompt under 10,000 characters with every option on (a test enforces it); $0 while anything waits.
+Atticus has to stay fast and nearly free, so new features must fit under these limits:
+
+- Instant commands: no AI, $0.
+- AI asks: median under $0.002 and 6 s over the last 50. Check with `python atticus.py --budget`.
+- System prompt: under 10,000 characters with every option on. Every ask pays for it, and a test enforces it.
+- Integrations: $0 until your ask is about them.
+- Anything that waits or runs in the background: $0 while it waits. AI only to set it up and to act at the end.
+
+## Safety, honestly
+
+Safe mode is on by default. On Windows it is the Allow check alone: Claude Code's sandbox, which the Mac version also uses, isn't available on native Windows. Everything that deletes, sends, buys, changes a file, runs a system command, unlocks a door or runs a workflow waits for your Allow; turning safe mode off removes those questions.
+
+## Usage count
+
+This version sends nothing. The daily anonymous user count from the Mac version is off unless an `ATTICUS_POSTHOG_KEY` is set at build time, and none is.
+
+## Files
+
+- `win/Atticus/`: the app (hotkey, speech, overlay, setup and Settings windows, tray, updater), in C# with WebView2
+- `atticus.py`: the brain (fast commands, system prompt, safety checks), kept close to the Mac version so fixes carry over
+- `winctl.py`: Windows' hands (displays, windows, apps, clipboard and typing, screenshots, files, UI Automation)
+- `integrations/`: one file per service, plus `_custom.py` for the ones you add in Settings
+- `ui/ui.html`, `ui/onboarding.html`, `ui/settings.html`: the overlay, the welcome flow, and Settings
+- `ui/orbs.js`: the [thinking-orbs](https://github.com/Jakubantalik/thinking-orbs) engine (MIT, Jakub Antalik)
 
 ## License
 
-MIT. See `LICENSE`. Original Atticus by SaarthurR. `ui/orbs.js` is from [thinking-orbs](https://github.com/Jakubantalik/thinking-orbs), also MIT. Speech by [whisper.cpp](https://github.com/ggerganov/whisper.cpp) through [Whisper.net](https://github.com/sandrohanea/whisper.net) (MIT).
+MIT. See `LICENSE`. Original Atticus by [SaarthurR](https://github.com/SaarthurR/atticus-mac). `ui/orbs.js` is from [thinking-orbs](https://github.com/Jakubantalik/thinking-orbs), also MIT. Speech by [whisper.cpp](https://github.com/ggerganov/whisper.cpp) through [Whisper.net](https://github.com/sandrohanea/whisper.net), MIT.
+
+## Contributing
+
+Run `python -m unittest discover -s tests -v` and `python atticus.py --selftest` (with `PYTHONUTF8=1`), and `Atticus.exe --selftest` after building; CI runs all three on Windows. Use a scratch `ATTICUS_DIR` so tests stay off your own chat and rules. Handy while working: `ATTICUS_DEMO="<request>"` runs one request at launch without the mic, `ATTICUS_CAPTURABLE=1` lets screenshots see the box, `Atticus.exe --transcribe <wav>` runs a file through speech, and `Atticus.exe --text "<app>"` prints what text recognition reads in a window.
+
+Fixes to the brain or the pages that aren't Windows-specific are worth sending upstream to [atticus-mac](https://github.com/SaarthurR/atticus-mac) too.
