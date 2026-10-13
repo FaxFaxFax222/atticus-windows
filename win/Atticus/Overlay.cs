@@ -165,10 +165,17 @@ addEventListener('DOMContentLoaded', () => {
             fresh = false;
             if (!busy && !listening) { clickTalk = true; Start(); if (!listening) clickTalk = false; }
         }
-        if (b.TryGetProperty("ready", out _)) js("size", Prefs.Num("boxH"));
+        if (b.TryGetProperty("ready", out _))
+        {
+            js("size", Prefs.Num("boxH"));
+            Web.Js(web, "document.documentElement.style.background='rgba(18,18,20,.5)'");   // the Mac app tints natively now; the acrylic here needs the page's tint
+        }
         if (b.TryGetProperty("safe", out _)) { Prefs.Set("safe", true); js("mode", true); Program.Settings.Push(); }
         if (b.TryGetProperty("pick", out var pk) && askFile != "") { Answer(pk.GetString() ?? ""); }
         if (b.TryGetProperty("allow", out var al) && askFile != "") { Answer(al.GetBoolean() ? "y" : "n"); }
+        if (b.TryGetProperty("off", out var of) && of.GetString() is { Length: > 0 } k && k != "safe" && Prefs.Defaults.GetValueOrDefault(k) is bool)
+        { Prefs.Set(k, false); Program.Settings.Push(); }   // "Turn off tips", "Don't ask again" on a card
+        if (b.TryGetProperty("improve", out var im)) { Prefs.Set("improve", im.GetBoolean()); Prefs.Set("improveAsked", true); Program.Settings.Push(); }
         if (b.TryGetProperty("comp", out _)) { }
     }
 
@@ -545,16 +552,22 @@ addEventListener('DOMContentLoaded', () => {
         if (proc != p) return;   // buffered output from a cancelled request stays cancelled
         if (line == "! setup") { Program.Onboarding.Open(); return; }   // Claude not installed, signed out or no plan
         if (line.StartsWith("@ ")) { Ring.At(line); return; }   // experimental "show me where"
-        if (line.StartsWith("? "))   // safe mode: "? <question>\t<command>\t<answer file>"
+        if (line == "! improve") { ShowBox(); js("improve"); return; }   // once, after a task that worked: Help improve Atticus?
+        if (line.StartsWith("? "))   // safe mode: "? <question>\t<command>\t<answer file>[\t<setting it can turn off>[\tretry]]"
         {
             var q = line[2..].Split('\t');
-            if (q.Length != 3) return;
-            askFile = q[2]; ShowBox(); js("ask", new[] { q[0], q[1] }); return;
+            if (q.Length is < 3 or > 5) return;
+            askFile = q[2]; ShowBox(); js("ask", q.Length == 3 ? new[] { q[0], q[1] } : new[] { q[0], q[1], q[3], q.Length == 5 ? q[4] : "" }); return;
         }
-        if (line.StartsWith("⚙ "))   // "⚙ <key> <true|false>": the AI flips one of Atticus's switches; never safe mode or pause
+        if (line.StartsWith("⚙ "))   // "⚙ <key> <true|false|option>": the AI changes one of Atticus's settings; never pause, and Safe mode only on
         {
             var q = line.Split(' ');
-            if (q.Length == 3 && Prefs.Defaults.GetValueOrDefault(q[1]) is bool && q[1] is not ("safe" or "paused")) { Program.Settings.Apply(q[1], q[2] == "true"); Program.Settings.Push(); }
+            if (q.Length != 3 || q[1] == "paused") return;
+            var def = Prefs.Defaults.GetValueOrDefault(q[1]);
+            if (def is bool && (q[1] != "safe" || q[2] == "true")) Program.Settings.Apply(q[1], q[2] == "true");
+            else if (def is string) Program.Settings.Apply(q[1], q[2]);   // a choice setting: "⚙ model sonnet"
+            else return;
+            Program.Settings.Push();
             return;
         }
         if (line.StartsWith("◇ "))   // "which one?": the choices card

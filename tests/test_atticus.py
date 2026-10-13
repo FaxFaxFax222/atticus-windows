@@ -169,10 +169,22 @@ class BrainTests(unittest.TestCase):
         p.stdin = io.StringIO(); p.ask = ''; p.returncode = 0
         p.stdout = map(json.dumps, [
             {'type': 'user', 'message': {'content': [{'type': 'tool_result', 'is_error': True}]}},
+            {'type': 'user', 'message': {'content': [{'type': 'tool_result', 'is_error': False, 'content': 'Verified.'}]}},
             {'type': 'result', 'result': 'Recovered.'}])
         atticus.run('test', p)
         self.assertTrue(atticus.run.ok)
         self.assertEqual(atticus.run.cmds, [])
+
+    def test_failed_final_tool_cannot_be_reported_as_done(self):
+        p = unittest.mock.Mock()
+        p.stdin = io.StringIO(); p.ask = ''; p.returncode = 0
+        p.stdout = map(json.dumps, [
+            {'type': 'user', 'message': {'content': [{'type': 'tool_result', 'is_error': True, 'content': 'Image not found'}]}},
+            {'type': 'result', 'result': 'I sent the message.'}])
+        reply, _, _ = atticus.run('send the question', p)
+        self.assertFalse(atticus.run.ok)
+        self.assertIn('could not verify', reply)
+        self.assertNotIn('I sent', reply)
 
     def test_cancellation_stops_descendant(self):
         with tempfile.TemporaryDirectory() as root:
@@ -380,9 +392,15 @@ class WatchAndBudgetTests(unittest.TestCase):
         self.assertEqual(atticus.winctl.rect_for('right', area, (800, 600)), (-1280, 0, 1280, 1392))
         self.assertEqual(atticus.winctl.rect_for('center', area, (3000, 600)), (-2560, 396, 2560, 600))   # never wider than the screen
 
-    def test_set_flips_a_switch_by_name_never_safe_mode(self):
+    def test_set_flips_a_switch_by_name_safe_mode_only_on(self):
         self.assertIn('askMe', atticus.switches())
-        self.assertFalse({'safe', 'paused'} & set(atticus.switches()))
+        self.assertNotIn('paused', atticus.switches())
+        with patch.dict(os.environ, {'ATTICUS_ASK': '/fake'}), patch.object(atticus, 'ask_user') as ask, patch('sys.stdout', new_callable=io.StringIO):
+            atticus.set_switch('safe mode', 'on')
+        self.assertEqual(ask.call_args.args[0], {'set': 'safe', 'value': True})
+        with patch.dict(os.environ, {'ATTICUS_ASK': '/fake'}), patch.object(atticus, 'ask_user') as ask, patch('sys.stdout', new_callable=io.StringIO):
+            atticus.set_switch('claude model', 'sonnet')   # a choice setting, by its option
+        self.assertEqual(ask.call_args.args[0], {'set': 'model', 'value': 'sonnet'})
         for words, key in [('the asking setting', 'askMe'), ('read answers aloud', 'speak'), ('safe mode', None)]:
             with patch.dict(os.environ, {'ATTICUS_ASK': '/fake'}), patch.object(atticus, 'ask_user') as ask, patch('sys.stdout', new_callable=io.StringIO):
                 atticus.set_switch(words, 'off')
@@ -393,7 +411,7 @@ class WatchAndBudgetTests(unittest.TestCase):
 
     def test_prompt_stays_under_budget(self):
         # Every ask pays for this prompt. Raising the cap is a decision: check `atticus.py --budget` first.
-        full = atticus.SYSTEM + atticus.ASK_ME + atticus.POINTER + atticus.LEARN_ME + atticus.TEACH + atticus.ASK_FIRST
+        full = atticus.SYSTEM + atticus.ASK_ME + atticus.POINTER + atticus.LEARN_ME + atticus.TEACH + atticus.ASK_FIRST + atticus.WORKFLOW + atticus.JOPLIN_TOOLS
         self.assertLessEqual(len(full), 10000)
 
 

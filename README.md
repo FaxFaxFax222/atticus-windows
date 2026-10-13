@@ -45,7 +45,7 @@
 
 <table>
 <tr>
-<td width="33%" valign="top"><h3>Fast</h3>Opening apps and sites, moving windows, web searches and music skip the AI entirely. Actions you ask for once (opening apps, moving windows, playing music) become learned shortcuts: replayed with no AI and no wait.</td>
+<td width="33%" valign="top"><h3>Fast</h3>Opening apps and sites, moving windows, web searches and music skip the AI entirely. Actions you ask for once (opening apps, moving windows, playing music) become learned shortcuts: replayed with no AI and no wait, even said in another order or about another app. Longer tasks save a procedure the AI follows next time.</td>
 <td width="33%" valign="top"><h3>No API key</h3>Runs on the Claude plan you already have, through <code>claude -p</code>. About 0.1¢ of plan usage per ask, priced at API list rates. Atticus itself is free.</td>
 <td width="33%" valign="top"><h3>Remembers you</h3>"Remember: open means bring it to the front." Saved rules go with every ask. It learns lasting facts about you, and when you correct it, it saves a rule so it gets it right next time. Edit all of it in Settings.</td>
 </tr>
@@ -62,7 +62,7 @@
 
 Choose **Hold to talk** or **Press to toggle** in Settings → General → Shortcut behavior. Hold mode sends when you release. Toggle mode starts on the first press and sends on the second; pauses keep listening. Pressing the shortcut while Atticus answers stops it; during spoken playback it stops the voice. Esc cancels listening without sending. Toggle recordings reach a review screen after 60 seconds, rather than sending automatically.
 
-Click any answer to copy it. Click your request to edit and ask again, or press ↑ in an empty typing box to recall the latest one. Drag the box anywhere; drag its edges to resize it. It never shows in screen shares, recordings or Atticus's own screenshots.
+Click any answer to copy it. **Try again** under the latest answer redoes it (and drops a learned shortcut that did the wrong thing). If a task can't finish, a card offers Retry, or Try Sonnet for just that task (Settings → Intelligence). Click your request to edit and ask again, or press ↑ in an empty typing box to recall the latest one. Drag the box anywhere; drag its edges to resize it. It never shows in screen shares, recordings or Atticus's own screenshots.
 
 Your words appear live while you talk. When you let go, Whisper reads the whole recording once more, and that final text is what Atticus acts on: AI tools and learned shortcuts wait for it. Simple commands can run mid-sentence with Instant commands and Act while I'm talking on (Settings → Intelligence).
 
@@ -130,7 +130,7 @@ Safe mode is on by default. On Windows it is the Allow check alone: Claude Code'
 
 ## Usage count
 
-This version sends nothing. The daily anonymous user count from the Mac version is off unless an `ATTICUS_POSTHOG_KEY` is set at build time, and none is.
+This version sends nothing. The daily anonymous user count and the opt-in failure reports (Settings → Account & Access → Help improve Atticus) from the Mac version stay off unless an `ATTICUS_POSTHOG_KEY` is set at build time, and none is.
 
 ## Files
 
@@ -150,3 +150,15 @@ MIT. See `LICENSE`. Original Atticus by [SaarthurR](https://github.com/SaarthurR
 Run `python -m unittest discover -s tests -v` and `python atticus.py --selftest` (with `PYTHONUTF8=1`), and `Atticus.exe --selftest` after building; CI runs all three on Windows. Use a scratch `ATTICUS_DIR` so tests stay off your own chat and rules. Handy while working: `ATTICUS_DEMO="<request>"` runs one request at launch without the mic, `ATTICUS_CAPTURABLE=1` lets screenshots see the box, `Atticus.exe --transcribe <wav>` runs a file through speech, and `Atticus.exe --text "<app>"` prints what text recognition reads in a window.
 
 Fixes to the brain or the pages that aren't Windows-specific are worth sending upstream to [atticus-mac](https://github.com/SaarthurR/atticus-mac) too.
+
+### Not on Windows yet
+
+Merged from atticus-mac up to `eba8597` (2026-10-13). These Mac features weren't ported; their files are left out of this fork so a merge never ships them half-working:
+
+- Meeting Copilot (call audio needs WASAPI loopback instead of ScreenCaptureKit)
+- Background work with a live mini screen, and Chrome page reading and clicking (`ui/web.js`)
+- Native "hands" (clicks, typing, scrolling through Accessibility); `atticus --ui` covers part of it with UI Automation
+- Selected-text rewrite, and drafts inserted at the cursor
+- Contacts lookup, the Report feedback window, and the Apple speech model picker
+
+When merging upstream again, resolve `atticus.py`, `ui/settings.html` and `ui/onboarding.html` by hand, and `git rm` the Mac-only files.
