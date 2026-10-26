@@ -21,6 +21,7 @@ tasks on the Mac. Output lines for the overlay: "· note", "▸ step", "✓ answ
   atticus.py --unwatch                    stop every watch  |  --budget   is real use still under the cost and speed budget?
   atticus.py --find "<words>" [--content] [--in <folder>]   the user's files (Windows Search)  |  --clip   the clipboard
   atticus.py --media playpause|next|previous   |  --trash <path>   |  --note "<text>"   |  --windows [app]
+  atticus.py --draw '<JSON>'  |  --draw --help   a guide or a whiteboard drawn over the user's screens (needs --look first)
 Completed requests go to %APPDATA%/Atticus/log.jsonl with their cost (live actions are marked).
 """
 import atexit, base64, html, json, platform, shlex, shutil, threading, os, re, signal, subprocess, sys, tempfile, time, urllib.parse, urllib.request
@@ -29,6 +30,7 @@ try:
 except ImportError:   # tests and syntax checks on other systems
     winctl = None
 import integrations
+import drawing
 
 os.environ.setdefault('PYTHONUTF8', '1')   # helpers and hooks started from here read and write UTF-8
 if sys.platform == 'win32':
@@ -101,7 +103,7 @@ def pref(key, default):
 SHOT = 'atticus-screen-'   # temp file prefix, one per display
 os.environ['PATH'] = os.pathsep.join([os.path.join(HOME, '.local', 'bin'), os.path.join(HOME, '.claude', 'local'), os.environ.get('PATH', '')])
 APP = os.environ.get('ATTICUS_APP') or os.path.join(os.environ.get('LOCALAPPDATA', HOME), 'Programs', 'Atticus', 'Atticus.exe')   # set by Atticus.exe
-FIND, CLIP, MEDIA, TRASH, NOTE, WINDOWS, UI, KEYS, JOPLIN, INT = (ME + f' --{c}' for c in ('find', 'clip', 'media', 'trash', 'note', 'windows', 'ui', 'keys', 'joplin', 'int'))
+FIND, CLIP, MEDIA, TRASH, NOTE, WINDOWS, UI, KEYS, JOPLIN, INT, DRAW = (ME + f' --{c}' for c in ('find', 'clip', 'media', 'trash', 'note', 'windows', 'ui', 'keys', 'joplin', 'int', 'draw'))
 
 SYSTEM = f"""You are Atticus, a Windows PC helper. The user holds a hotkey, talks, lets go; your reply shows in a small box on the user's screen.
 Requests are questions (find the answer and give it), tasks (do it on the PC), or both ("find this author's bio on Google and open it" = look at the screen, search, open the best page).
@@ -184,7 +186,7 @@ RISKY = [('Delete something?', r'\b(rm|rmdir|srm|unlink|shred|trash|mv|del|erase
          ('Buy this?', r'\b(buy|purchase|checkout|check out|place (an |the )?order|pay)\b'),
          ('Change a file?', r'(?<![0-9&])>>?\s*(?!/dev/null|\$null|&|/tmp/|nul\b)\S|\btee\s|curl\b.*\s(-o|--output|-O)\b|\b(set-content|add-content|out-file|new-item|rename-item|copy-item|ren|copy|xcopy|robocopy)\b'),
          ('Run a system command?', r'\bsudo\b|\bkillall\b|\btaskkill\b|\bstop-process\b|\breg(\.exe)?\s+(add|delete|import)|set-itemproperty|new-itemproperty|\bsc(\.exe)?\s+(config|delete|stop|create)|\bschtasks\b|-verb\s+runas|\bnetsh\b|\bsetx\b|set-executionpolicy|\b(shutdown|stop-computer|restart-computer)\b|\bwinget\s+(install|uninstall)')]
-QUIET = (SEARCH, READ, LOOK, FRONT, SHOW, PLACE, PLAY, TYPE, REMEMBER, FORGET, ABOUT, PICK, SET, HISTORY, FIND, CLIP, MEDIA, NOTE, WINDOWS, UI + ' see', JOPLIN, 'start "" "http', 'start http')   # never delete, send or buy
+QUIET = (SEARCH, READ, LOOK, FRONT, SHOW, PLACE, PLAY, TYPE, REMEMBER, FORGET, ABOUT, PICK, SET, HISTORY, FIND, CLIP, MEDIA, NOTE, WINDOWS, UI + ' see', JOPLIN, DRAW, 'start "" "http', 'start http')   # never delete, send or buy
 
 
 # Enter after typing a message sends it in chat apps (Discord, Slack, Teams…); Enter after typing into a search box
@@ -235,6 +237,7 @@ CLICKED = re.compile(r'\b(send|delete|remove|discard|buy|purchase|pay|checkout|p
 def risky(cmd):
     """-> the question to ask the user, or '' when the command can just run."""
     state = typing_state()
+    cmd = re.sub(re.escape(DRAW) + r"\s+'[^']*'", DRAW, cmd)   # a drawing's JSON is data: its captions ("click Send") never ask
     for part in re.split(r'[;&|\n]', cmd):
         part = part.strip()
         state, sends = typing_step(state, part)
@@ -583,7 +586,7 @@ DEICTIC = re.compile(r'\b(this|that|these|those|it|here|there|them|him|her)\b') 
 
 
 # shortcut: a deny list, not proof of safety; shortcuts only ever come from the user's own ask
-UNSAFE = re.compile(r'(^|[;&|(`\s])(rm|rmdir|sudo|dd|diskutil|shutdown|reboot|halt|srm|trash|mv|find|curl|wget)\s|git push|\$\(|`|>|\|\s*(ba|z)?sh\b|\bdelete\b')
+UNSAFE = re.compile(r'(^|[;&|(`\s])(rm|rmdir|sudo|dd|diskutil|shutdown|reboot|halt|srm|trash|mv|find|curl|wget)\s|git push|\$\(|`|>|\|\s*(ba|z)?sh\b|\bdelete\b|--draw\b')
 
 
 NAMED = re.compile(r'(?:from now on,? )?when(?:ever)? i say (?:["“\']([^"”\']{2,40})["”\']|([^,:;"“]{2,40}?)\s*(?:[,:;]|\b(?:do|then|can you|please|you)\b))', re.I)   # "When I say work mode, …"
@@ -937,10 +940,12 @@ def look():
     """Every display, at once, 1280 px wide (≈1.5K tokens each) -> [(path, label)]. "My monitor" needs the right one.
     The Atticus box is never in the picture: the app excludes its own windows from screen capture."""
     mons = winctl.monitors()
+    ask = os.environ.get('ATTICUS_ASK')   # an AI helper's pictures belong to the request (its folder goes when it ends), not this short-lived process
     def one(i):
-        fd, path = tempfile.mkstemp(prefix=f'{SHOT}{i}-', suffix='.jpg')
+        fd, path = tempfile.mkstemp(prefix=f'{SHOT}{i}-', suffix='.jpg', dir=ask)
         os.close(fd)
-        atexit.register(lambda: os.path.exists(path) and os.remove(path))
+        if not ask:
+            atexit.register(lambda: os.path.exists(path) and os.remove(path))
         try:
             winctl.capture(mons[i - 1], path)
         except Exception:
@@ -949,7 +954,14 @@ def look():
         m = mons[i - 1]
         return path, f'Screen {i}: "{m["name"]}" ({"built-in laptop screen" if m["built_in"] else "external monitor"})'
     from concurrent.futures import ThreadPoolExecutor
-    return [r for r in ThreadPoolExecutor(len(mons) or 1).map(one, range(1, len(mons) + 1)) if os.path.exists(r[0])]
+    shots = [r for r in ThreadPoolExecutor(len(mons) or 1).map(one, range(1, len(mons) + 1)) if os.path.exists(r[0])]
+    if ask:   # what --draw maps picture pixels through: this ask's screens as they were just pictured
+        try:
+            with open(os.path.join(ask, 'draw-screens.json'), 'w') as f:
+                json.dump({'screens': drawing.mappings(mons)}, f)
+        except OSError:
+            pass
+    return shots
 
 
 def get(url, timeout=10):
@@ -1015,6 +1027,8 @@ def label(name, inp):
         return 'Changing a setting'
     if c.startswith(PLAY):
         return 'Playing ' + c[len(PLAY):].strip(' "\'') + ' on Spotify'
+    if c.startswith(DRAW):
+        return 'Reading how to draw' if c[len(DRAW):].strip() == '--help' else 'Drawing on your screen'
     if c.startswith(LOOK):
         return 'Looking at your screen'
     if c.startswith(FIND):
@@ -1278,7 +1292,7 @@ def start_claude(mcp=None, model=None):
     claude = shutil.which('claude')
     if not claude:
         return None
-    system = SYSTEM.replace('NEVER_RISKY', ASK_FIRST if pref('safe', True) else NEVER) + (ASK_ME if pref('askMe', True) else '') + (POINTER if pref('pointer', False) else '') + (LEARN_ME if pref('learnMe', True) else '') + (TEACH if pref('tips', True) else '') + (WORKFLOW if pref('learn', True) else '') + (JOPLIN_TOOLS if winctl and winctl._joplin_settings().get('api.token') else '')
+    system = SYSTEM.replace('NEVER_RISKY', ASK_FIRST if pref('safe', True) else NEVER) + (ASK_ME if pref('askMe', True) else '') + (drawing.DRAWING if pref('draw', True) else POINTER if pref('pointer', False) else '') + (LEARN_ME if pref('learnMe', True) else '') + (TEACH if pref('tips', True) else '') + (WORKFLOW if pref('learn', True) else '') + (JOPLIN_TOOLS if winctl and winctl._joplin_settings().get('api.token') else '')
     settings = {}
     ask = tempfile.mkdtemp(prefix='atticus-ask-')   # the Allow card (safe mode) and the choices card talk through it
     atexit.register(shutil.rmtree, ask, True)   # however this run ends
@@ -1308,6 +1322,14 @@ def relay(p):
     """Passes the gate's question to the box ("? <question>\t<command>\t<answer file>"), or a dialog when there is no box."""
     q = os.path.join(p.ask, 'q')
     while p.poll() is None:
+        for name in sorted(n for n in os.listdir(p.ask) if n.startswith('emit-')):   # a helper's line for the box (a drawing)
+            f = os.path.join(p.ask, name)
+            try:
+                with open(f, encoding='utf-8') as r: line = r.read()
+                os.remove(f)
+            except OSError:
+                continue
+            if os.environ.get('ATTICUS_UI') == '1': print(line, flush=True)
         if os.path.exists(q):
             j = json.load(open(q))
             os.remove(q)
@@ -1336,7 +1358,7 @@ def relay(p):
 def run(task, p=None, shots=()):
     """One request through `claude -p --model haiku` (the user's plan), streaming notes and steps. shots: [(path, label)] sent with it."""
     run.cmds = run.ran = []
-    run.ok = False
+    run.ok = run.guided = False
     p = p or start_claude()
     if not p:
         say('!', 'setup')   # Atticus.app opens its setup window
@@ -1367,6 +1389,7 @@ def run(task, p=None, shots=()):
         elif j.get('type') == 'user':   # tool results
             results = [b for b in j.get('message', {}).get('content', []) if isinstance(b, dict) and b.get('type') == 'tool_result']
             if results:
+                run.guided = run.guided or any('Guide shown (' in json.dumps(b.get('content', ''), ensure_ascii=False) for b in results if not b.get('is_error'))
                 last_failed = any(b.get('is_error') for b in results)
                 bad |= {ids.get(b.get('tool_use_id')) for b in results if b.get('is_error')}
         elif j.get('type') == 'result':
@@ -1412,6 +1435,40 @@ def relevant_rules(task, most=15):
     words = set(re.findall(r'[a-z0-9]+', task.lower())) - STOP
     hits = [r for r in rules if words & set(re.findall(r'[a-z0-9]+', r.lower()))]
     return '\n'.join(hits[:most])
+
+
+def draw(data):
+    """--draw: a checked guide goes to Atticus.exe ("✎ <json>" through relay()); it answers in a receipt file once the marks are up."""
+    if not pref('draw', True): raise ValueError('Screen drawings are off')
+    if not wait_commit(): raise ValueError('Request cancelled before confirmation')
+    ask = os.environ.get('ATTICUS_ASK')
+    if not ask or os.environ.get('ATTICUS_UI') != '1': raise ValueError('Drawing needs a request from the Atticus box')
+    try:
+        with open(os.path.join(ask, 'draw-screens.json')) as f: snapshot = json.load(f)
+    except (OSError, ValueError): snapshot = {}
+    if not snapshot.get('screens'): raise ValueError(f'Run {LOOK} in this request and Read its pictures before drawing, so the guide matches the screen')
+    value = drawing.drawing(data, snapshot['screens'])
+    receipt = os.path.join(ask, 'draw-result-' + os.urandom(8).hex())
+    value['receipt'] = receipt
+    emit('✎ ' + json.dumps(value, ensure_ascii=False))
+    try:
+        for _ in range(50):
+            if os.path.exists(receipt):
+                with open(receipt, encoding='utf-8') as f: result = f.read()
+                if result != 'shown': raise ValueError(result)
+                return f'Guide shown (step 1 of {len(value["steps"])}). Leave it running.'
+            time.sleep(0.1)
+        raise ValueError('The drawing did not appear. Is Atticus running?')
+    finally:
+        if os.path.exists(receipt): os.remove(receipt)
+
+
+def emit(line):
+    """A line for the box from an AI helper (its stdout goes to the AI): relay() in the request's process prints it, in order."""
+    ask = os.environ['ATTICUS_ASK']
+    fd, tmp = tempfile.mkstemp(dir=ask, prefix='.emit-')
+    with os.fdopen(fd, 'w', encoding='utf-8') as f: f.write(line)
+    os.replace(tmp, os.path.join(ask, f'emit-{time.time_ns()}'))
 
 
 def point(reply):
@@ -1605,6 +1662,14 @@ def main():
         moves = [m.split('\0') for m in '\0'.join(args[1:]).split('\0+\0') if m and m != '+']
         from concurrent.futures import ThreadPoolExecutor
         return print('\n'.join(ThreadPoolExecutor(len(moves) or 1).map(lambda m: place(*m), moves)))
+    if args == ['--draw', '--help']:
+        return print(drawing.HELP if pref('draw', True) else 'Screen drawings are off')
+    if args[:1] == ['--draw']:
+        try:
+            if len(args) != 2: raise ValueError(f"Use {DRAW} '{{\"steps\":[...]}}'")
+            return print(draw(json.loads(args[1])))
+        except (OSError, ValueError, TypeError, KeyError) as e:
+            print('Could not draw: ' + str(e)); return sys.exit(1)
     if args == ['--look']:
         return print('\n'.join(f'{label}: {path}' for path, label in look()) or 'no screenshot: allow Atticus in Screen Recording (System Settings)')
     if args[:1] == ['--front'] and len(args) > 1:   # "show me where" on an app or window the user isn't looking at
@@ -1744,8 +1809,13 @@ def main():
     snap.shots = shots
     atexit.register(lambda: [os.remove(p) for p, _ in shots if os.path.exists(p)])   # private: no screenshot left in Temp
     snap.start()
-    if args == ['--wait']:   # "<app the user is in now>\t<request>", even if Claude could not start
-        front_now, _, task = sys.stdin.readline().strip().rpartition('\t')
+    drawn = None
+    if args == ['--wait']:   # "<app the user is in now>\t<request>", or {"front", "task", "drawing"}; even if Claude could not start
+        line = sys.stdin.readline().strip()
+        if line.startswith('{'):
+            request = json.loads(line)
+            front_now, task, drawn = request.get('front', ''), request.get('task', ''), request.get('drawing')
+        else: front_now, _, task = line.rpartition('\t')
         os.environ['ATTICUS_FRONT'] = front_now or os.environ.get('ATTICUS_FRONT', '')
     task = task if args == ['--wait'] else ' '.join(a for a in args if a != '--plan') or ask()
     if not task:
@@ -1797,7 +1867,7 @@ def main():
     helping.join(4)
     prompt = (f'Context: {ctx}\n' + (f'Earlier:\n{earlier}' if earlier else '') + (f'Memory:\n{mem}\n' if mem else '') +
               (f'Integrations:\n{int_hints}\n' if int_hints else '') + ''.join(helps) +
-              (f'Saved workflow (historical guidance):\n{procedure}\n' if procedure else '') + f'Request: {task}')
+              (f'Saved workflow (historical guidance):\n{procedure}\n' if procedure else '') + drawing.context(drawn) + f'Request: {task}')
     reply, cost, steps = run(prompt, warm, images or ())
     if not wait_commit():
         return
@@ -1814,6 +1884,7 @@ def main():
             run.ran = previous + run.ran
             reply, cost, steps = again or reply, cost + more, steps + extra
     reply = point(re.sub(r'\s*\n\s*Sources?:.*\Z', '', reply, flags=re.S | re.I))
+    if run.ok and run.guided: reply = 'Done. Steps are on screen.'   # the guide says it; a long reply would cover it
     taught = re.search(r'\[tip ([^\]]+)\]', reply)
     reply = (reply[:taught.start()] + reply[taught.end():]).strip() if taught else reply
     fix = turns and re.match(r"(no|nope|not that|wrong|that's wrong|i meant|i said)\b", plain(task))

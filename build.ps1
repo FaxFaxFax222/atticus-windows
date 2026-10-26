@@ -51,7 +51,7 @@ else {
 New-Item -ItemType Directory -Force $dest, "$dest\ui" | Out-Null
 Copy-Item "$out\*" $dest -Recurse -Force
 Remove-Item $out -Recurse -Force
-Copy-Item atticus.py, winctl.py $dest -Force
+Copy-Item atticus.py, winctl.py, drawing.py $dest -Force
 New-Item -ItemType Directory -Force "$dest\integrations" | Out-Null
 Copy-Item integrations\*.py "$dest\integrations" -Force
 Copy-Item ui\*.html, ui\*.js, ui\AppIcon.ico, ui\AppIcon.png "$dest\ui" -Force

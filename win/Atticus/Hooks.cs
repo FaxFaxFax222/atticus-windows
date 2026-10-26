@@ -14,6 +14,7 @@ static class Hooks
     public static Func<bool> EscWanted;      // the box is up: Esc is ours
     public static Action Escape;
     public static Action<int, int> ClickAt;  // a click anywhere (screen pixels)
+    public static event Action<int, int> Clicked;   // a left click anywhere, for a drawing on screen
     public static Action<int, int, string> Recorded;   // Settings → Change Shortcut: (vk, mods, label), vk 0 = cancelled
     public static Action<string> RecordingMods;
     public static bool Recording;
@@ -84,6 +85,7 @@ static class Hooks
         {
             var m = Marshal.PtrToStructure<MSLLHOOKSTRUCT>(l);
             ClickAt?.Invoke(m.pt.X, m.pt.Y);
+            if (w == WM_LBUTTONDOWN) Clicked?.Invoke(m.pt.X, m.pt.Y);
         }
         return CallNextHookEx(mouse, code, w, l);
     }

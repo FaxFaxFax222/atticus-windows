@@ -90,7 +90,8 @@ addEventListener('DOMContentLoaded', () => {
         if (Environment.GetEnvironmentVariable("ATTICUS_CAPTURABLE") != "1")   // debugging: let screenshots see the box
             Native.SetWindowDisplayAffinity(Handle, 0x11);   // never in screen shares, recordings, or Atticus's own screenshots
         web = await Web.Load(this, "ui.html", OnMessage, true, PointerScript);
-        Hooks.EscWanted = () => Visible && Opacity > 0;
+        Hooks.EscWanted = () => Visible && Opacity > 0 || ScreenDrawing.Active;
+        ScreenDrawing.Ours = p => Visible && Opacity > 0 && Bounds.Contains(p);
         Hooks.Escape = Escape;
         Hooks.Shortcut = Shortcut;
         Hooks.ClickAt = (x, y) =>   // click anywhere else closes the box once the answer is up
@@ -263,6 +264,7 @@ addEventListener('DOMContentLoaded', () => {
         if (Voice.Shush()) return;
         if (listening) { Hush(); Sound.Cue("soundStop"); js("stopped", "Stopped listening"); Hide(1.5); }
         else if (busy) Cancel();
+        else if (ScreenDrawing.Active) ScreenDrawing.Clear();   // the drawing first; Esc again closes the box
         else if (Visible) Close(false);
     }
 
@@ -419,6 +421,7 @@ addEventListener('DOMContentLoaded', () => {
         var r = Rest();
         if (!listening || fastBusy || liveRevised || r == "" || TranscriptKey(r) == TranscriptKey(ahead)) return;
         var core = Regex.Replace(r.ToLowerInvariant(), @"^(?:(?:hey|ok|okay|atticus|please|can you|could you|would you|also|and|now|then)[,\s]+)+", "");
+        if (ScreenDrawing.StepWord(TranscriptKey(r))) return;   // "next" while a guide is up moves the guide, no AI
         if (Commands.Any(c => core.StartsWith(c + " "))) return;
         DropAhead();
         ahead = r;
@@ -552,6 +555,7 @@ addEventListener('DOMContentLoaded', () => {
         if (proc != p) return;   // buffered output from a cancelled request stays cancelled
         if (line == "! setup") { Program.Onboarding.Open(); return; }   // Claude not installed, signed out or no plan
         if (line.StartsWith("@ ")) { Ring.At(line); return; }   // experimental "show me where"
+        if (line.StartsWith("✎ ")) { ScreenDrawing.Receive(line[2..]); return; }   // --draw: marks over the screen (its receipt tells the AI)
         if (line == "! improve") { ShowBox(); js("improve"); return; }   // once, after a task that worked: Help improve Atticus?
         if (line.StartsWith("? "))   // safe mode: "? <question>\t<command>\t<answer file>[\t<setting it can turn off>[\tretry]]"
         {
@@ -590,6 +594,10 @@ addEventListener('DOMContentLoaded', () => {
 
     void Run(string t, bool speculative = false)
     {
+        if (!speculative && ScreenDrawing.Command(TranscriptKey(t)) is { } moved)   // "next", "back", "done" while a guide is up
+        {
+            busy = false; Unwarm(); answer = "✓ " + moved; js("line", answer); lastDone = DateTime.Now; Hide(Linger(1.5)); return;
+        }
         busy = true; answer = "";
         if (!speculative) js("think");
         if (warm is { } w0 && w0.p.HasExited) warm = null;
@@ -601,14 +609,14 @@ addEventListener('DOMContentLoaded', () => {
             try { File.WriteAllText(commit, "go"); }
             catch { Cancel(); js("msg", "Could not confirm the request. Please try again."); return; }
         }
-        try { w.Value.input.Write(Hooks.Mine + "\t" + t.Replace("\n", " ") + "\n"); w.Value.input.Close(); }
+        try { w.Value.input.Write(Web.Json(new { front = Hooks.Mine, task = t.Replace("\n", " "), drawing = ScreenDrawing.Summary }) + "\n"); w.Value.input.Close(); }
         catch { Cancel(); js("msg", "The request worker stopped. Please try again."); }
     }
 
     void Deliver(string a)   // Settings: read answers aloud, copy them
     {
         if (Prefs.Bool("autoCopy")) { try { Clipboard.SetText(a); } catch { } }
-        if (Prefs.Bool("speak")) Voice.Say(a, () => Hide(2));
+        if (Prefs.Bool("speak") && !(ScreenDrawing.Active && a == "Done. Steps are on screen.")) Voice.Say(a, () => Hide(2));   // a guide speaks its own steps
     }
 
     // Test hook: ATTICUS_DEMO="<request>" runs it once without the mic.
