@@ -1809,17 +1809,20 @@ def main():
     snap.shots = shots
     atexit.register(lambda: [os.remove(p) for p, _ in shots if os.path.exists(p)])   # private: no screenshot left in Temp
     snap.start()
-    drawn = None
-    if args == ['--wait']:   # "<app the user is in now>\t<request>", or {"front", "task", "drawing"}; even if Claude could not start
+    drawn = marks = None
+    if args == ['--wait']:   # "<app the user is in now>\t<request>", or {"front", "task", "drawing", "point"}; even if Claude could not start
         line = sys.stdin.readline().strip()
         if line.startswith('{'):
             request = json.loads(line)
-            front_now, task, drawn = request.get('front', ''), request.get('task', ''), request.get('drawing')
+            front_now, task, drawn, marks = request.get('front', ''), request.get('task', ''), request.get('drawing'), request.get('point')
         else: front_now, _, task = line.rpartition('\t')
         os.environ['ATTICUS_FRONT'] = front_now or os.environ.get('ATTICUS_FRONT', '')
     task = task if args == ['--wait'] else ' '.join(a for a in args if a != '--plan') or ask()
     if not task:
         return warm and stop_claude(warm)
+    marked, marked_images = drawing.point_context(marks)   # Point at your screen: what the user marked, and its crop
+    for path, _ in marked_images:
+        atexit.register(lambda p=path: os.path.exists(p) and os.remove(p))
     ping()
     key = re.fullmatch(r'\W*(?:my )?(?:license )?key\W+([\w-]{8,})\W*', task, re.I)
     if key or not licensed():
@@ -1833,7 +1836,7 @@ def main():
         return say('✓', f'Atticus is $5, once. Buy a key on the page that just opened, then type: key <your key>')
     t = time.time()
     commit = os.environ.get('ATTICUS_COMMIT')
-    quick = (not commit or os.path.exists(commit)) and pref('instant', True) and fast(task)
+    quick = (not commit or os.path.exists(commit)) and pref('instant', True) and not marked and fast(task)   # a mark is about the screen: never an instant command
     if quick:
         if warm:
             stop_claude(warm)
@@ -1862,12 +1865,13 @@ def main():
     turns = [r for r in turns if time.time() - r['t'] < 600][-3:]   # this chat only (Atticus.app clears it for a new one); 10 min cap for typed asks
     earlier = earlier_chat(turns)
     images = screen_for(task, snap, fx)
+    if marked_images: images = (images or []) + marked_images
     if images == []:
         ctx += ' Screen capture unavailable. Do not guess screen contents; explain how to enable Screen Recording for Atticus.'
     helping.join(4)
     prompt = (f'Context: {ctx}\n' + (f'Earlier:\n{earlier}' if earlier else '') + (f'Memory:\n{mem}\n' if mem else '') +
               (f'Integrations:\n{int_hints}\n' if int_hints else '') + ''.join(helps) +
-              (f'Saved workflow (historical guidance):\n{procedure}\n' if procedure else '') + drawing.context(drawn) + f'Request: {task}')
+              (f'Saved workflow (historical guidance):\n{procedure}\n' if procedure else '') + drawing.context(drawn) + marked + f'Request: {task}')
     reply, cost, steps = run(prompt, warm, images or ())
     if not wait_commit():
         return

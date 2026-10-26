@@ -63,6 +63,8 @@ addEventListener('DOMContentLoaded', () => {
     int gen, stops, consumed, listenID;
     List<string> did = new();
     Process proc, fastProc;
+    object pointContext;   // Point at your screen: the mark and its crop, sent with the next ask
+    string pointImage = "";
     (Process p, StreamWriter input, string commit)? warm;
     DateTime began = DateTime.Now;
     public DateTime lastDone = DateTime.MinValue;
@@ -90,13 +92,15 @@ addEventListener('DOMContentLoaded', () => {
         if (Environment.GetEnvironmentVariable("ATTICUS_CAPTURABLE") != "1")   // debugging: let screenshots see the box
             Native.SetWindowDisplayAffinity(Handle, 0x11);   // never in screen shares, recordings, or Atticus's own screenshots
         web = await Web.Load(this, "ui.html", OnMessage, true, PointerScript);
-        Hooks.EscWanted = () => Visible && Opacity > 0 || ScreenDrawing.Active;
+        Hooks.EscWanted = () => Visible && Opacity > 0 || ScreenDrawing.Active || ScreenDrawing.HasInput;
         ScreenDrawing.Ours = p => Visible && Opacity > 0 && Bounds.Contains(p);
+        ScreenDrawing.Picked = (r, words) => FinishPoint(new() { r.Location, new PointF(r.Right, r.Bottom) }, words);
+        ScreenDrawing.Shown = () => { if (Visible) Native.Raise(Handle); };
         Hooks.Escape = Escape;
         Hooks.Shortcut = Shortcut;
         Hooks.ClickAt = (x, y) =>   // click anywhere else closes the box once the answer is up
         {
-            if (!Visible || busy || listening || stuck || Bounds.Contains(x, y)) return;
+            if (!Visible || busy || listening || stuck || Bounds.Contains(x, y) || pointContext != null || ScreenDrawing.Takes(new Point(x, y))) return;   // marking stays in the box
             Close(false);
         };
         SystemEvents_DisplayChanged();
@@ -178,6 +182,8 @@ addEventListener('DOMContentLoaded', () => {
         { Prefs.Set(k, false); Program.Settings.Push(); }   // "Turn off tips", "Don't ask again" on a card
         if (b.TryGetProperty("improve", out var im)) { Prefs.Set("improve", im.GetBoolean()); Prefs.Set("improveAsked", true); Program.Settings.Push(); }
         if (b.TryGetProperty("comp", out _)) { }
+        if (b.TryGetProperty("point", out _)) StartPointing();
+        if (b.TryGetProperty("pointClear", out _)) ClearPoint();
     }
 
     void Answer(string s)   // whole, or the waiting side reads it half-written
@@ -264,7 +270,8 @@ addEventListener('DOMContentLoaded', () => {
         if (Voice.Shush()) return;
         if (listening) { Hush(); Sound.Cue("soundStop"); js("stopped", "Stopped listening"); Hide(1.5); }
         else if (busy) Cancel();
-        else if (ScreenDrawing.Active) ScreenDrawing.Clear();   // the drawing first; Esc again closes the box
+        else if (ScreenDrawing.HasInput || pointContext != null) ClearPoint();   // the user's mark first, then the drawing, then the box
+        else if (ScreenDrawing.Active) ScreenDrawing.Clear();
         else if (Visible) Close(false);
     }
 
@@ -295,7 +302,7 @@ addEventListener('DOMContentLoaded', () => {
     // ✕ also ends the conversation; clicking away or timing out keeps it for 5 minutes.
     public void Close(bool clear)
     {
-        Voice.Shush(); Hush();
+        Voice.Shush(); Hush(); ClearPoint();
         if (clear) { try { File.Delete(Paths.Recent); } catch { } lastDone = DateTime.MinValue; }
         gen++;
         var g = gen;
@@ -421,7 +428,7 @@ addEventListener('DOMContentLoaded', () => {
         var r = Rest();
         if (!listening || fastBusy || liveRevised || r == "" || TranscriptKey(r) == TranscriptKey(ahead)) return;
         var core = Regex.Replace(r.ToLowerInvariant(), @"^(?:(?:hey|ok|okay|atticus|please|can you|could you|would you|also|and|now|then)[,\s]+)+", "");
-        if (ScreenDrawing.StepWord(TranscriptKey(r))) return;   // "next" while a guide is up moves the guide, no AI
+        if (ScreenDrawing.StepWord(TranscriptKey(r)) || pointContext != null || ScreenDrawing.Inputting) return;   // "next" moves the guide; a mark waits for the whole question
         if (Commands.Any(c => core.StartsWith(c + " "))) return;
         DropAhead();
         ahead = r;
@@ -435,7 +442,7 @@ addEventListener('DOMContentLoaded', () => {
     void TryFast()
     {
         var w = Words();
-        if (!Prefs.Bool("live") || !Prefs.Bool("instant") || !listening || fastBusy || liveRevised || w.Length <= consumed) return;
+        if (!Prefs.Bool("live") || !Prefs.Bool("instant") || !listening || fastBusy || liveRevised || w.Length <= consumed || pointContext != null) return;
         var seg = string.Join(" ", w.Skip(consumed)); var n = w.Length; var prefix = TranscriptKey(string.Join(" ", w));
         Process p;
         try { p = Py.Start(new[] { "--fast", seg }, new() { ["ATTICUS_FRONT"] = Hooks.Mine, ["ATTICUS_LIVE"] = "1" }); } catch { return; }
@@ -609,7 +616,10 @@ addEventListener('DOMContentLoaded', () => {
             try { File.WriteAllText(commit, "go"); }
             catch { Cancel(); js("msg", "Could not confirm the request. Please try again."); return; }
         }
-        try { w.Value.input.Write(Web.Json(new { front = Hooks.Mine, task = t.Replace("\n", " "), drawing = ScreenDrawing.Summary }) + "\n"); w.Value.input.Close(); }
+        var point = pointContext; pointContext = null; pointImage = "";   // the crop goes with this ask; atticus.py removes it after
+        if (point != null) js("point", false);
+        ScreenDrawing.ClearInput();
+        try { w.Value.input.Write(Web.Json(new { front = Hooks.Mine, task = t.Replace("\n", " "), drawing = ScreenDrawing.Summary, point }) + "\n"); w.Value.input.Close(); }
         catch { Cancel(); js("msg", "The request worker stopped. Please try again."); }
     }
 
@@ -617,6 +627,57 @@ addEventListener('DOMContentLoaded', () => {
     {
         if (Prefs.Bool("autoCopy")) { try { Clipboard.SetText(a); } catch { } }
         if (Prefs.Bool("speak") && !(ScreenDrawing.Active && a == "Done. Steps are on screen.")) Voice.Say(a, () => Hide(2));   // a guide speaks its own steps
+    }
+
+    // ---- Point at your screen: mark a spot or a part, then ask about it ----
+    void StartPointing()
+    {
+        if (busy || listening) { js("msg", "Finish or stop listening first."); return; }
+        ClearPoint();
+        pinned = true;
+        ScreenDrawing.BeginInput(p => FinishPoint(p));
+        js("point", new { active = true, marked = false });
+    }
+
+    // mark: one of Atticus's own marks the user clicked (points are its corners); else the user's own stroke.
+    void FinishPoint(List<PointF> points, string mark = "")
+    {
+        if (points.Count == 0) { ClearPoint(); return; }
+        var screen = Screen.FromPoint(Point.Round(points[0])); var k = ScreenDrawing.Scale(screen);
+        var region = Rectangle.Intersect(Rectangle.Round(ScreenDrawing.Bounds(points, 24 * k)), screen.Bounds);
+        if (region.Width < 2 || region.Height < 2) { ClearPoint(); js("msg", "Couldn’t capture that mark."); return; }
+        var path = Path.Combine(Path.GetTempPath(), "atticus-point-" + Guid.NewGuid() + ".jpg");
+        string thumb = "";
+        try
+        {
+            using var shot = new Bitmap(region.Width, region.Height);
+            using (var g = Graphics.FromImage(shot))
+            {
+                g.CopyFromScreen(region.Location, Point.Empty, region.Size);   // Atticus's own windows are never in it
+                if (mark == "") { g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias; g.TranslateTransform(-region.X, -region.Y); ScreenDrawing.DrawMark(g, points, k); }
+            }
+            shot.Save(path, System.Drawing.Imaging.ImageFormat.Jpeg);
+            var scale = Math.Min(1, Math.Min(480.0 / shot.Width, 300.0 / shot.Height));
+            using var small = new Bitmap(shot, Math.Max(1, (int)(shot.Width * scale)), Math.Max(1, (int)(shot.Height * scale)));
+            using var ms = new MemoryStream(); small.Save(ms, System.Drawing.Imaging.ImageFormat.Jpeg);
+            thumb = "data:image/jpeg;base64," + Convert.ToBase64String(ms.ToArray());   // the page can't read temporary files
+        }
+        catch (Exception e) { Program.Err("point: " + e.Message); try { File.Delete(path); } catch { } if (mark == "") { ClearPoint(); js("msg", "Couldn’t capture that mark."); return; } path = ""; }
+        if (pointImage != "") try { File.Delete(pointImage); } catch { }   // a redrawn mark replaces the last crop
+        pointImage = path;
+        pointContext = new { bounds = new[] { region.X, region.Y, region.Width, region.Height }, path = points.Select(p => new[] { Math.Round(p.X, 1), Math.Round(p.Y, 1) }).ToArray(),
+                             image = path, mark = mark == "" ? null : mark.Length > 1000 ? mark[..1000] : mark };
+        pinned = true; ShowBox(); TakeKeys(); js("compose", true);
+        js("point", new { active = false, marked = true, picked = mark != "", thumb });
+    }
+
+    void ClearPoint()
+    {
+        var had = pointContext != null || ScreenDrawing.HasInput;
+        ScreenDrawing.ClearInput();
+        if (pointImage != "") try { File.Delete(pointImage); } catch { }
+        pointContext = null; pointImage = "";
+        if (had) js("point", false);
     }
 
     // Test hook: ATTICUS_DEMO="<request>" runs it once without the mic.

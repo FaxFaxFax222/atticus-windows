@@ -83,6 +83,19 @@ class DrawingTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'Read its pictures'):
                 atticus.draw({'steps': [{'say': 'x', 'shapes': [{'kind': 'pointer', 'at': [1, 1]}]}]})
 
+    def test_a_mark_brings_its_crop_and_only_atticus_own_crops(self):
+        fd, crop = tempfile.mkstemp(prefix='atticus-point-', suffix='.jpg'); os.close(fd)
+        self.addCleanup(os.remove, crop)
+        text, shots = drawing.point_context({'bounds': [10, 20, 100, 80], 'path': [[30, 40], [60, 70]], 'image': crop})
+        self.assertIn('User mark (trusted geometry): path', text)
+        self.assertEqual([os.path.normcase(s[0]) for s in shots], [os.path.normcase(os.path.realpath(crop))])
+        picked, _ = drawing.point_context({'bounds': [1, 1, 5, 5], 'path': [[1, 1], [6, 6]], 'image': '', 'mark': 'label "Save" in step 1 of 2'})
+        self.assertIn('label \\"Save\\"', picked)   # quoted data, never instructions
+        elsewhere = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'atticus-point-x.jpg')
+        for bad in [None, {'bounds': [0, 0, 0, 5], 'path': [[1, 1]], 'image': crop}, {'bounds': [0, 0, 5, 5], 'path': [], 'image': crop},
+                    {'bounds': [0, 0, 5, 5], 'path': [[1, 1]], 'image': elsewhere}]:
+            self.assertEqual(drawing.point_context(bad), ('', []))
+
     def test_prompt_with_drawing_stays_under_budget(self):
         full = (atticus.SYSTEM.replace('NEVER_RISKY', atticus.ASK_FIRST) + atticus.ASK_ME + drawing.DRAWING + atticus.LEARN_ME +
                 atticus.TEACH + atticus.WORKFLOW + atticus.JOPLIN_TOOLS)

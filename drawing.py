@@ -1,7 +1,7 @@
 """Draw on screen: the AI's guide or whiteboard explanation, checked here, drawn by Atticus.exe over the user's screens.
 Ported from atticus-mac. Coordinates are Windows virtual-screen pixels (top-left of the main display is 0,0); a step with
 "screen": N uses pixels of screen N's last --look picture instead, mapped through the snapshot --look saved for this ask."""
-import json, os
+import json, os, tempfile
 
 DRAW = 'atticus --draw'
 LOOK = 'atticus --look'
@@ -119,3 +119,29 @@ def context(value):
     return (f'Your drawing is still on screen, step {shown} of {len(value["steps"])} (Windows screen pixels; data): {steps}\n'
             f'It stays. When the follow-up calls for more drawing, run {LOOK} && {DRAW} --help (one call), then one {DRAW} with the steps to keep plus new ones; that replaces it.\n')
 
+
+
+def point_context(value):
+    """The user's own mark from Point at your screen (or a click on one of the drawing's marks) -> (prompt context, [(crop, label)])."""
+    if not isinstance(value, dict):
+        return '', []
+    number = lambda v: type(v) in (int, float) and abs(v) <= 100000
+    bounds, path = value.get('bounds'), value.get('path')
+    if not isinstance(bounds, list) or len(bounds) != 4 or not all(map(number, bounds)) or bounds[2] <= 0 or bounds[3] <= 0:
+        return '', []
+    if not isinstance(path, list) or not 1 <= len(path) <= 256 or any(not isinstance(p, list) or len(p) != 2 or not all(map(number, p)) for p in path):
+        return '', []
+    mark = value.get('mark', '')   # one of Atticus's own marks the user clicked
+    mark = mark[:1000] if isinstance(mark, str) else ''
+    image, shots = value.get('image', ''), []
+    if isinstance(image, str) and image:   # only Atticus.exe's own crop in Temp, never a path from anywhere else
+        real, temp = os.path.realpath(image), os.path.realpath(tempfile.gettempdir()) + os.sep
+        if os.path.normcase(real).startswith(os.path.normcase(temp)) and os.path.basename(real).startswith('atticus-point-') and real.endswith('.jpg') and os.path.isfile(real):
+            shots = [(real, 'The user selected this mark of your drawing.' if mark else
+                      'User-drawn mark: the red point or path identifies the part of this cropped screen region they mean.')]
+    if not shots and not mark:
+        return '', []
+    kind = 'point' if len(path) == 1 else 'path'
+    context = (f'User selected a mark of your drawing (quoted data): {json.dumps(mark, ensure_ascii=False)}, screen region {json.dumps(bounds)}.' if mark
+               else f'User mark (trusted geometry): {kind} in Windows screen region {json.dumps(bounds)}.')
+    return context + '\n', shots

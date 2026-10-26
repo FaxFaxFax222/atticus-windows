@@ -213,6 +213,14 @@ try {
   ui.stopped('Stopped'); assert(!d.querySelector('.mini'), 'Cancellation clears the thumbnail immediately');
   ui.reset(); ui.listen(true); ui.words('Put Notes on the left.'); ui.think();
   ui.line('▸ Moving Notes → left'); ui.line('✓ Notes is on the left.'); ui.compose(true);
+  // Point at your screen: the button asks the app to start, the chip shows what was marked, × clears it
+  ui.hover(true); d.getElementById('point').click(); await new Promise(r => setTimeout(r, 30)); assert(messages.some(m => m.point), 'The pointer button asks the app to start marking');
+  ui.point({active: true, marked: false}); const pbar = d.getElementById('pointbar');
+  assert(pbar.dataset.s === 'on' && d.getElementById('point').classList.contains('active') && pbar.querySelector('.hint').textContent.includes('Click'), 'Pointing shows its hint and an active button');
+  ui.point({active: false, marked: true, picked: false, thumb: 'data:image/gif;base64,R0lGODlhAQABAAAAACw='});
+  assert(pbar.classList.contains('has') && !pbar.querySelector('img').hidden && d.getElementById('status').textContent.startsWith('Marked'), 'A mark waits in a chip with its picture');
+  tap(pbar.querySelector('.rm')); await new Promise(r => setTimeout(r, 30)); assert(messages.some(m => m.pointClear), 'The chip’s × clears the mark (a tap on the box, as the app sends it)');
+  ui.point(false); assert(!pbar.dataset.s && !pbar.classList.contains('has') && d.getElementById('status').textContent === '', 'Sending or clearing the mark hides the chip');
   results.textContent = checks.join('\n') + `\n\n${checks.length} checks passed.`; results.className = 'pass';
 } catch (error) { results.textContent = checks.join('\n') + '\n✗ ' + error.message; results.className = 'fail'; }
 </script></html>

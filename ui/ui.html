@@ -200,12 +200,25 @@
     background: rgba(255,255,255,.08); box-shadow: inset 0 0 0 .5px rgba(255,255,255,.14); transition: background .25s, box-shadow .25s; }
   #ask::placeholder { color: #8e8e93; }
   #ask:focus { background: rgba(255,255,255,.12); box-shadow: inset 0 0 0 .5px rgba(255,255,255,.22), 0 0 0 3px rgba(10,132,255,.35); }
-  #mic { flex: none; width: 34px; height: 34px; border-radius: 50%; border: 0; padding: 0; display: grid; place-items: center; cursor: pointer;
+  #point, #mic { flex: none; width: 34px; height: 34px; border-radius: 50%; border: 0; padding: 0; display: grid; place-items: center; cursor: pointer;
     background: radial-gradient(120% 120% at 30% 15%, rgba(255,255,255,.26), rgba(255,255,255,.07) 60%);
     box-shadow: inset 0 0 0 .5px rgba(255,255,255,.3), 0 2px 6px rgba(0,0,0,.22); transition: transform .35s var(--spring), background .25s; }
-  #mic:hover { transform: scale(1.1); background: radial-gradient(120% 120% at 30% 15%, rgba(255,255,255,.4), rgba(255,255,255,.12) 60%); }
-  #mic:active { transform: scale(.94); }
-  #mic svg { width: 15px; height: 15px; fill: none; stroke: #fff; stroke-width: 1.8; stroke-linecap: round; }
+  #point:hover, #mic:hover { transform: scale(1.1); background: radial-gradient(120% 120% at 30% 15%, rgba(255,255,255,.4), rgba(255,255,255,.12) 60%); }
+  #point:active, #mic:active { transform: scale(.94); }
+  #point svg, #mic svg { width: 15px; height: 15px; fill: none; stroke: #fff; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  #point.active, #point.marked { background: rgba(10,132,255,.55); }
+  /* Point at your screen: what the user marked waits here for the question */
+  #pointbar { display: none; align-items: center; gap: 8px; min-height: 28px; margin-top: 12px; font: 12px -apple-system, system-ui, sans-serif; color: #8e8e93; }
+  #pointbar[data-s] { display: flex; animation: in .3s var(--spring) both; }
+  #pointbar .hint { flex: 1; min-width: 0; line-height: 1.35; }
+  #pointbar .chip { display: none; align-items: center; gap: 7px; height: 28px; padding: 0 3px; border-radius: 9px; color: #f5f5f7;
+    background: rgba(255,255,255,.08); box-shadow: inset 0 0 0 .5px rgba(255,255,255,.14); }
+  #pointbar .chip img, #pointbar .chip i { flex: none; width: 34px; height: 22px; border-radius: 6px; object-fit: cover; display: grid; place-items: center; background: rgba(255,255,255,.1); }
+  #pointbar .chip img[hidden], #pointbar .chip img:not([hidden]) + i { display: none; }
+  #pointbar .chip i svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  #pointbar .rm { width: 22px; height: 22px; padding: 0; border: 0; border-radius: 6px; display: grid; place-items: center; background: none; color: #8e8e93; cursor: pointer; }
+  #pointbar .rm:hover { color: #fff; background: rgba(255,255,255,.1); } #pointbar .rm svg { width: 9px; height: 9px; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; }
+  #pointbar.has .chip { display: inline-flex; } #pointbar.has .hint { display: none; }
 
   /* resize: drag the bottom-right corner */
   #grip { position: absolute; right: 4px; bottom: 4px; width: 12px; height: 12px; opacity: 0; transition: opacity .25s; cursor: nwse-resize; }
@@ -239,7 +252,10 @@
 <div id="card">
   <div id="head"><canvas id="orb"></canvas><div id="status"></div></div>
   <div id="thread"></div>
+  <div id="pointbar" role="group" aria-label="Point at your screen"><span class="chip"><img alt="What you marked" hidden><i></i><span>Marked</span><button class="rm" title="Remove mark" aria-label="Remove mark"><svg viewBox="0 0 10 10"><path d="M2 2l6 6M8 2L2 8"/></svg></button></span>
+    <span class="hint" aria-live="polite"></span></div>
   <div id="comp" inert><input id="ask" placeholder="Ask Atticus…" autocomplete="off" spellcheck="false" aria-label="Ask Atticus">
+    <button id="point" title="Point at your screen" aria-label="Point at your screen" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M9 8l11 4.5-4.6 1.9L13.5 19z"/><path d="M5.1 11.9A5.5 5.5 0 0 1 12.9 4.1"/></svg></button>
     <button id="mic" title="Talk instead" aria-label="Talk instead"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg></button></div>
 </div>
 <div class="e" id="eL"></div><div class="e" id="eR"></div><div class="e" id="eT"></div><div class="e" id="eB"></div>
@@ -311,6 +327,11 @@
     if (t && !window.ui.respond(t)) post({ send: t });
   };
   $('mic').onclick = () => { $('ask').value = ''; comp(false); post({ mic: 1 }); };
+  // Point at your screen. The app owns the mark; the page shows its state.
+  const bar = $('pointbar');
+  bar.querySelector('.chip i').innerHTML = $('point').innerHTML;
+  $('point').onclick = () => { if (working) return status('Finish or stop the current answer first'); post({ point: 1 }); };
+  bar.querySelector('.rm').onclick = () => post({ pointClear: 1 });
   const status = (s, live) => {
     if (s && listening) s = 'Listening…';   // early AI notes never replace it while the user talks
     $('status').className = live ? 'live' : '';
@@ -543,9 +564,23 @@
       else if (!on && !$('ask').value && document.activeElement !== $('ask')) comp(false);
     },
     compose(on) { comp(on, on); },
+    point(value) {   // {active, marked, picked, thumb}: pointing now, a mark is waiting, it is one of Atticus's marks, a picture of it; false: none
+      const active = !!value?.active, marked = !!value?.marked, button = $('point'), img = bar.querySelector('img'), was = $('status').textContent;
+      button.classList.toggle('active', active); button.classList.toggle('marked', marked);
+      button.setAttribute('aria-pressed', active);
+      if (typeof value?.thumb === 'string') { img.hidden = !value.thumb; img.src = value.thumb; }
+      if (!marked) { img.hidden = true; img.removeAttribute('src'); }
+      if (active || marked) bar.dataset.s = active ? 'on' : 'marked'; else delete bar.dataset.s;
+      bar.classList.toggle('has', marked);
+      bar.querySelector('.hint').textContent = active && !marked ? 'Click, circle or scribble on anything, then ask' : '';
+      if (active) { status('Pointing…'); comp(true); }
+      else if (marked) { status('Marked: now ask about it'); comp(true, true); }
+      else if (was === 'Pointing…' || was.startsWith('Marked')) status('');
+      fit();
+    },
     draft(t) { $('ask').value = t; comp(true, true); },
     tap([x, y]) {   // a click on the box, not a drag: on the answer = copy it, anywhere else = type
-      const el = document.elementFromPoint(x, y), b = el?.closest('.ok button, .ok, .pk button, .pk, .rewrite button, .mini-view');
+      const el = document.elementFromPoint(x, y), b = el?.closest('.ok button, .ok, .pk button, .pk, .rewrite button, .mini-view, #pointbar button');
       const field = el?.closest('.ok input, .ok textarea, .pk input, .pk textarea');   // "Something else…": a text field in a card takes the cursor
       if (field) return field.focus();
       if (b) return b.click();

@@ -42,6 +42,8 @@ static class Native
     [DllImport("user32")] public static extern int GetWindowLong(IntPtr h, int i);
     [DllImport("user32")] public static extern int SetWindowLong(IntPtr h, int i, int v);
     [DllImport("user32")] public static extern bool GetCursorPos(out POINT p);
+    [DllImport("user32")] public static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint flags);
+    public static void Raise(IntPtr h) => SetWindowPos(h, new IntPtr(-1), 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0010);   // HWND_TOPMOST, no move/size/activate
 
     public delegate void WinEventProc(IntPtr hook, uint ev, IntPtr hwnd, int obj, int child, uint thread, uint time);
     [DllImport("user32")] public static extern IntPtr SetWinEventHook(uint min, uint max, IntPtr mod, WinEventProc fn, uint pid, uint thread, uint flags);

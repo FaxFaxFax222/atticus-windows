@@ -15,8 +15,17 @@ namespace Atticus;
 sealed class Layer : Form
 {
     bool through;
-    public Action<Point> Clicked;       // local pixels
+    public Action<Point> Clicked, Dragged, Released;   // local pixels
     public Func<Point, bool> Hot;       // a button there: the hand cursor
+    public Cursor Resting = Cursors.Default;
+    public bool IsClickThrough => through;
+    public void SetClickThrough(bool on)   // only while the pointer is over a mark does a drawing take the click
+    {
+        if (on == through || !IsHandleCreated) { through = on; return; }
+        through = on;
+        var ex = GetWindowLong(Handle, -20);
+        SetWindowLong(Handle, -20, on ? ex | WS_EX_TRANSPARENT : ex & ~WS_EX_TRANSPARENT);
+    }
     public Layer(Rectangle bounds, bool clickThrough)
     {
         FormBorderStyle = FormBorderStyle.None; ShowInTaskbar = false; StartPosition = FormStartPosition.Manual; TopMost = true;
@@ -38,7 +47,12 @@ sealed class Layer : Form
         base.WndProc(ref m);
     }
     protected override void OnMouseDown(MouseEventArgs e) { if (e.Button == MouseButtons.Left) Clicked?.Invoke(e.Location); }
-    protected override void OnMouseMove(MouseEventArgs e) { Cursor = Hot?.Invoke(e.Location) == true ? Cursors.Hand : Cursors.Default; }
+    protected override void OnMouseMove(MouseEventArgs e)
+    {
+        Cursor = Hot?.Invoke(e.Location) == true ? Cursors.Hand : Resting;
+        if (e.Button == MouseButtons.Left) Dragged?.Invoke(e.Location);
+    }
+    protected override void OnMouseUp(MouseEventArgs e) { if (e.Button == MouseButtons.Left) Released?.Invoke(e.Location); }
 
     public void Present(Bitmap bmp)
     {
@@ -84,6 +98,16 @@ static class ScreenDrawing
     static PointF? previousPointer;
     static bool hooked;
     public static Func<Point, bool> Ours = _ => false;   // the box and its cards: their clicks are not the user's
+    public static Action<RectangleF, string> Picked;      // a click on one of the marks: its screen area and what it is, to ask about
+    static readonly List<(GraphicsPath area, int step, int shape)> hits = new();   // screen pixels: what a click on each mark selects
+    static readonly List<(Screen screen, Layer layer, Bitmap canvas)> input = new();   // Point at your screen
+    static readonly List<PointF> stroke = new();
+    static Action<List<PointF>> strokeDone;
+    static DateTime strokeDrawn;
+    public static bool Inputting => strokeDone != null;
+    public static bool HasInput => input.Count > 0;
+    public static Action Shown;   // layers went up: the box comes back on top of them
+    public static bool Takes(Point p) => Inputting || OnMark(p);   // this click is the drawing's, not a click away from the box
 
     public static bool Active => steps != null;
     public static object Summary => Active ? new { steps = raw.GetProperty("steps"), shown = index + 1 } : null;   // the next ask builds on it
@@ -167,6 +191,7 @@ static class ScreenDrawing
         layers.Clear();
         card?.Close(); card = null; buttons.Clear();
         if (spoke) Voice.Shush();
+        ClearHits();
         foreach (var l in board?.Lines ?? new()) l.Font.Dispose();
         steps = null; board = null; previousPointer = null; spoke = false;
     }
@@ -187,7 +212,7 @@ static class ScreenDrawing
 
     static void Clicked(Point p)
     {
-        if (!Active || DateTime.Now < ready || teaching || Ours(p) || card != null && card.Bounds.Contains(p)) return;
+        if (!Active || DateTime.Now < ready || teaching || Inputting || Ours(p) || card != null && card.Bounds.Contains(p) || OnMark(p)) return;   // a click on a mark selects it
         var step = steps[index];
         if (step.Wait && step.Hit is { } hit && !hit.Contains(p)) return;
         Advance();
@@ -196,8 +221,100 @@ static class ScreenDrawing
     static void Tick()
     {
         if (!Active) return;
+        HoverMarks();
         if (!teaching && DateTime.Now >= deadline) { Clear(); return; }
         if (!steps[index].Wait && !manual && index + 1 < steps.Count && DateTime.Now >= advanceAt && !Voice.Speaking) Advance();
+    }
+
+    // ---- the user's clicks on marks ----
+    static void ClearHits() { foreach (var h in hits) h.area.Dispose(); hits.Clear(); }
+    static bool OnMark(Point p) => layers.Any(l => !l.layer.IsClickThrough && l.layer.Bounds.Contains(p));
+
+    // Marks take a click only while the pointer is on one; everywhere else clicks reach the user's apps.
+    static void HoverMarks()
+    {
+        if (Control.MouseButtons != MouseButtons.None || !GetCursorPos(out var c)) return;
+        var p = new Point(c.X, c.Y);
+        var over = !Ours(p) && !(card?.Bounds.Contains(p) ?? false) && !Inputting && hits.Any(h => h.area.IsVisible(p));
+        foreach (var (_, l) in layers) l.SetClickThrough(!(over && l.Bounds.Contains(p)));
+    }
+
+    static void Pick(Point p)
+    {
+        var h = hits.LastOrDefault(x => x.area.IsVisible(p));
+        if (h.area == null || h.step < 0 || h.step >= steps.Count || h.shape < 0 || h.shape >= steps[h.step].Shapes.Count) return;
+        manual = true; if (spoke) { Voice.Shush(); spoke = false; }   // the user is asking about it: no more talking or stepping on
+        var step = steps[h.step]; var shape = step.Shapes[h.shape];
+        Picked?.Invoke(h.area.GetBounds(), $"{shape.Kind}{(shape.Text != null ? $" \"{shape.Text}\"" : "")} in step {h.step + 1} of {steps.Count}{(step.Say != "" ? ": " + step.Say : "")}");
+    }
+
+    // ---- Point at your screen: the user marks a spot (click) or a part (circle, scribble) and asks about it ----
+    public static void BeginInput(Action<List<PointF>> done)
+    {
+        ClearInput(); stroke.Clear(); strokeDone = done;
+        foreach (var s in Screen.AllScreens)
+        {
+            var l = new Layer(s.Bounds, false) { Resting = Cursors.Cross };
+            var canvas = new Bitmap(s.Bounds.Width, s.Bounds.Height, PixelFormat.Format32bppArgb);
+            l.Clicked = q => { if (!Inputting) return; stroke.Clear(); stroke.Add(new PointF(q.X + l.Left, q.Y + l.Top)); RenderInput(true); };   // a new stroke replaces the last one
+            l.Dragged = q =>
+            {
+                if (!Inputting || stroke.Count == 0 || stroke.Count >= 256) return;
+                var g = new PointF(q.X + l.Left, q.Y + l.Top);
+                if (Math.Abs(g.X - stroke[^1].X) + Math.Abs(g.Y - stroke[^1].Y) >= 3) { stroke.Add(g); RenderInput(false); }
+            };
+            l.Released = _ => { if (!Inputting || stroke.Count == 0) return; RenderInput(true); var d = strokeDone; FinishInput(); d(stroke.ToList()); };
+            input.Add((s, l, canvas));
+            Fill(canvas, true); l.Present(canvas); l.Show();
+        }
+        Shown?.Invoke();
+    }
+    static void Fill(Bitmap b, bool catching)   // alpha 1 everywhere: invisible, but a layered window only gets clicks where it is not fully clear
+    {
+        using var g = Graphics.FromImage(b); g.CompositingMode = CompositingMode.SourceCopy; g.Clear(Color.FromArgb(catching ? 1 : 0, 0, 0, 0));
+    }
+    static void RenderInput(bool now)
+    {
+        if (stroke.Count == 0 || !now && (DateTime.Now - strokeDrawn).TotalMilliseconds < 30) return;   // a fast scribble redraws at most ~30 times a second
+        strokeDrawn = DateTime.Now;
+        foreach (var (s, l, canvas) in input)
+        {
+            if (!s.Bounds.IntersectsWith(Rectangle.Round(Bounds(stroke, 20)))) continue;
+            Fill(canvas, Inputting);
+            using (var g = Graphics.FromImage(canvas))
+            {
+                g.SmoothingMode = SmoothingMode.AntiAlias; g.TranslateTransform(-s.Bounds.X, -s.Bounds.Y);
+                DrawMark(g, stroke, Scale(s));
+            }
+            l.Present(canvas);
+        }
+    }
+    public static void DrawMark(Graphics g, List<PointF> points, float k)   // the user's mark: a red dot for a click, a red line for a stroke
+    {
+        var red = Colors["red"];
+        if (points.Count == 1)
+        {
+            var r = new RectangleF(points[0].X - 8 * k, points[0].Y - 8 * k, 16 * k, 16 * k);
+            using var pen = new Pen(red, 3 * k); g.DrawEllipse(pen, r);
+            return;
+        }
+        using var shadow = new Pen(Color.FromArgb(115, 0, 0, 0), 5 * k) { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round };
+        using var line = new Pen(red, 3 * k) { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round };
+        g.DrawLines(shadow, points.ToArray()); g.DrawLines(line, points.ToArray());
+    }
+    public static RectangleF Bounds(List<PointF> points, float pad) =>
+        RectangleF.FromLTRB(points.Min(p => p.X) - pad, points.Min(p => p.Y) - pad, points.Max(p => p.X) + pad, points.Max(p => p.Y) + pad);
+    static void FinishInput()   // the mark stays until the ask is sent; clicks reach the user's apps again
+    {
+        strokeDone = null;
+        foreach (var (_, l, _) in input) { l.SetClickThrough(true); l.Resting = Cursors.Default; }
+        RenderInput(true);   // without the click-catching tint
+    }
+    public static void ClearInput()   // the user's own mark only; a guide stays
+    {
+        strokeDone = null; stroke.Clear();
+        foreach (var (_, l, canvas) in input) { l.Close(); canvas.Dispose(); }
+        input.Clear();
     }
 
     // ---- showing a step ----
@@ -215,6 +332,7 @@ static class ScreenDrawing
         }
         RectangleF marks = RectangleF.Empty, boardFrame = RectangleF.Empty;
         var earlier = new List<RectangleF>();
+        ClearHits();
         var page = board == null ? null : Page(board, index);
         foreach (var (screen, layer) in layers)
         {
@@ -225,13 +343,16 @@ static class ScreenDrawing
                 g.SmoothingMode = SmoothingMode.AntiAlias; g.TextRenderingHint = TextRenderingHint.AntiAliasGridFit; g.PixelOffsetMode = PixelOffsetMode.HighQuality;
                 g.TranslateTransform(-b.X, -b.Y);   // everything below is in screen pixels
                 var k = Scale(screen);
-                if (teaching) for (int i = 0; i < index; i++) Add(earlier, Render(g, steps[i].Shapes, k, b, Array.Empty<RectangleF>(), true));
+                if (teaching) for (int i = 0; i < index; i++) Add(earlier, Render(g, steps[i].Shapes, k, b, Array.Empty<RectangleF>(), true, i));
                 if (page != null) { RenderBoard(g, page.Value.frame, page.Value.lines, k); boardFrame = page.Value.frame; }
-                marks = Union(marks, Render(g, step.Shapes, k, b, step.Hit is { } h ? new[] { h } : Array.Empty<RectangleF>(), false));
+                marks = Union(marks, Render(g, step.Shapes, k, b, step.Hit is { } h ? new[] { h } : Array.Empty<RectangleF>(), false, index));
             }
             layer.Present(bmp);
             if (!layer.Visible) layer.Show();
+            layer.Resting = Cursors.Hand;   // it only takes clicks while the pointer is on a mark
+            layer.Clicked = q => Pick(new Point(q.X + layer.Left, q.Y + layer.Top));
         }
+        Shown?.Invoke();
         if (!boardFrame.IsEmpty) { if (page.Value.lines.Any(l => l.Step == index)) marks = Union(marks, boardFrame); else earlier.Add(boardFrame); }
         if (marks.IsEmpty) { Clear(); return; }
         if (step.Shapes.LastOrDefault(s => s.Kind == "pointer")?.At is { } pp) previousPointer = pp;
@@ -247,7 +368,7 @@ static class ScreenDrawing
     static RectangleF Union(RectangleF a, RectangleF b) => a.IsEmpty ? b : b.IsEmpty ? a : RectangleF.Union(a, b);
 
     // Physical pixels per point on that display (1 at 100 %, 1.5 at 150 %).
-    static float Scale(Screen s)
+    public static float Scale(Screen s)
     {
         try { var m = MonitorFromPoint(new POINT { X = s.Bounds.Left + 1, Y = s.Bounds.Top + 1 }, 2); if (GetDpiForMonitor(m, 0, out var x, out _) == 0) return x / 96f; } catch { }
         return 1;
@@ -299,8 +420,10 @@ static class ScreenDrawing
     static Color Darker(Color c, float f) => Color.FromArgb(c.A, (int)(c.R * (1 - f)), (int)(c.G * (1 - f)), (int)(c.B * (1 - f)));
 
     // Draws one step's marks (not its text lines) in screen pixels; returns what it covered on this display.
-    static RectangleF Render(Graphics g, List<Shape> shapes, float k, Rectangle screen, RectangleF[] avoid, bool dim)
+    static RectangleF Render(Graphics g, List<Shape> shapes, float k, Rectangle screen, RectangleF[] avoid, bool dim, int stepIndex)
     {
+        void Hit(GraphicsPath area, Shape s) { if (RectangleF.Intersect(area.GetBounds(), screen) != RectangleF.Empty) hits.Add((area, stepIndex, shapes.IndexOf(s))); else area.Dispose(); }
+        GraphicsPath Box(RectangleF r) { var a = new GraphicsPath(); a.AddRectangle(r); return a; }
         float gap = 6 * k, width = 3 * k;
         var targets = shapes.Where(s => s.Rect.HasValue).Select(s => s.Rect.Value).Concat(avoid).ToList();
         var keepOff = targets.Select(t => RectangleF.Inflate(t, gap, gap)).Concat(shapes.Where(s => s.Rect.HasValue).Select(s => Ring(s.Rect.Value, s.Kind == "circle", gap))).ToList();
@@ -353,13 +476,13 @@ static class ScreenDrawing
                     using (var bg = Rounded(box, 7 * k)) using (var fill = new SolidBrush(light ? color : Darker(color, 0.2f))) g.FillPath(fill, bg);
                     using (var ink = new SolidBrush(Fade(light ? Color.Black : Color.White, alpha)))
                         g.DrawString(shape.Text ?? "", font, ink, new RectangleF(box.X + 8 * k, box.Y + 5 * k, box.Width - 14 * k, box.Height - 8 * k));
-                    Covered(box); continue;
+                    Covered(box); Hit(Box(box), shape); continue;
                 }
                 var p = Beside(at, targets, gap);
                 var dot = new RectangleF(p.X - 5 * k, p.Y - 5 * k, 10 * k, 10 * k);
                 using (var fill = new SolidBrush(color)) g.FillEllipse(fill, dot);
                 using (var ring = new Pen(Fade(Color.White, alpha), 2 * k)) g.DrawEllipse(ring, dot);
-                Covered(RectangleF.Inflate(dot, k, k)); continue;
+                Covered(RectangleF.Inflate(dot, k, k)); Hit(Box(RectangleF.Inflate(dot, 5 * k, 5 * k)), shape); continue;
             }
             else continue;
             if (shape.Fill) using (var fill = new SolidBrush(Fade(color, 0.18))) g.FillPath(fill, path);
@@ -368,6 +491,9 @@ static class ScreenDrawing
             using (var pen = new Pen(color, width) { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round })
                 g.DrawPath(pen, path);
             Covered(RectangleF.Inflate(path.GetBounds(), width, width));
+            var area = (GraphicsPath)path.Clone();   // strokes take clicks near the line only, so the target inside a ring stays clickable
+            if (!shape.Fill) using (var near = new Pen(Color.Black, 12 * k)) area.Widen(near);
+            Hit(area, shape);
         }
         return drawn;
     }
@@ -423,7 +549,11 @@ static class ScreenDrawing
             using (var edge = new Pen(Color.FromArgb(56, 255, 255, 255), Math.Max(1, k / 2))) g.DrawPath(edge, bg);
         }
         foreach (var l in lines)
+        {
             using (var ink = new SolidBrush(l.Step < index ? Fade(l.Color, 0.7) : l.Color)) g.DrawString(l.Text, l.Font, ink, RectangleF.Inflate(l.Rect, 2, 0));
+            var area = new GraphicsPath(); area.AddRectangle(RectangleF.Inflate(l.Rect, 4, 2));
+            hits.Add((area, l.Step, steps[l.Step].Shapes.FindIndex(x => x.Kind == "text" && x.Text == l.Text)));
+        }
     }
 
     // ---- the step card ----
