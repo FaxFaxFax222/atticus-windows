@@ -202,9 +202,11 @@ sealed class OnboardingWindow : PageWindow
     // The Claude row's button: install Claude Code, sign in, or upgrade, in a terminal window the user can watch.
     void FixPlan() => Task.Run(() =>
     {
-        var need = Plan().TryGetProperty("need", out var n) ? n.GetString() : "";
+        var plan = Plan();
+        var need = plan.TryGetProperty("need", out var n) ? n.GetString() : "";
         if (need == "upgrade") { Web.Open("https://claude.ai/upgrade"); return; }
-        var cmd = need == "install" ? "irm https://claude.ai/install.ps1 | iex; & \"$env:USERPROFILE\\.local\\bin\\claude.exe\" auth login" : "& claude auth login";
+        var cli = plan.TryGetProperty("cli", out var c) && c.GetString() is { Length: > 0 } found ? found.Replace("'", "''") : "";   // Claude Code itself: a bare `claude` can open the desktop app
+        var cmd = need == "install" || cli == "" ? "irm https://claude.ai/install.ps1 | iex; & \"$env:USERPROFILE\\.local\\bin\\claude.exe\" auth login" : $"& '{cli}' auth login";
         Process.Start(new ProcessStartInfo("powershell.exe", $"-NoProfile -ExecutionPolicy Bypass -NoExit -Command \"$env:Path = \\\"$env:USERPROFILE\\.local\\bin;$env:Path\\\"; Write-Host 'Atticus: setting up Claude Code'; {cmd.Replace("\"", "\\\"")}; Write-Host; Write-Host 'Done. You can close this window.'\"") { UseShellExecute = true });
         Program.Post(CheckPlan);
     });

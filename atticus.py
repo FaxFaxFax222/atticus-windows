@@ -1234,11 +1234,37 @@ def tip(reply, taught='', task='', elapsed=0):
     say('i', TIPS[n % len(TIPS)])
 
 
+# Folders of the Claude desktop app. It also answers to `claude` (an App Execution Alias in WindowsApps, or its own folder),
+# and running it opens a chat window with the request pasted in instead of answering here.
+DESKTOP_APP = re.compile(r'[\\/](windowsapps|anthropicclaude)([\\/]|$)|[\\/]programs[\\/]claude([\\/]|$)', re.I)
+
+
+def claude_cli():
+    """Claude Code's own command, never the Claude desktop app: the native installer's, an older local install, npm's,
+    then the first `claude` on PATH outside the app's folders. -> path or None"""
+    appdata = os.environ.get('APPDATA', '')
+    for p in (os.path.join(HOME, '.local', 'bin', 'claude.exe'), os.path.join(HOME, '.claude', 'local', 'claude.exe'),
+              os.path.join(HOME, '.claude', 'local', 'claude.cmd'), os.path.join(appdata, 'npm', 'claude.cmd') if appdata else ''):
+        if p and os.path.isfile(p):
+            return p
+    path = os.pathsep.join(d for d in os.environ.get('PATH', '').split(os.pathsep) if d and not DESKTOP_APP.search(d))
+    return shutil.which('claude', path=path)
+
+
 def plan():
     """Can Atticus think? Claude Code must be installed and signed in to a paid Claude plan (or an API key).
-    -> {'ok': bool, 'need': '' | 'install' | 'login' | 'upgrade', 'text': one line for the user}"""
+    -> {'ok': bool, 'need': '' | 'install' | 'login' | 'upgrade', 'text': one line for the user, 'cli': Claude Code's path}"""
+    cli = claude_cli()
+    if not cli:
+        return {'ok': False, 'need': 'install', 'text': 'Claude Code is not installed.', 'cli': ''}
+    found = plan_of(cli)
+    found['cli'] = cli
+    return found
+
+
+def plan_of(cli):
     try:
-        s = json.loads(subprocess.run(['claude', 'auth', 'status'], capture_output=True, text=True, timeout=20).stdout)
+        s = json.loads(subprocess.run([cli, 'auth', 'status'], capture_output=True, text=True, timeout=20).stdout)
     except FileNotFoundError:
         return {'ok': False, 'need': 'install', 'text': 'Claude Code is not installed.'}
     except (ValueError, subprocess.TimeoutExpired):
@@ -1289,7 +1315,7 @@ def shim_env():
 def start_claude(mcp=None, model=None):
     """`claude -p` started ahead, waiting for the request on stdin: its ~1 s startup happens while the user is still talking.
     mcp: {name: server config} for integrations served over MCP (only when the request is about them). model: this run only (Try Sonnet)."""
-    claude = shutil.which('claude')
+    claude = claude_cli()   # never the desktop app: it would open a chat window with the request
     if not claude:
         return None
     system = SYSTEM.replace('NEVER_RISKY', ASK_FIRST if pref('safe', True) else NEVER) + (ASK_ME if pref('askMe', True) else '') + (drawing.DRAWING if pref('draw', True) else POINTER if pref('pointer', False) else '') + (LEARN_ME if pref('learnMe', True) else '') + (TEACH if pref('tips', True) else '') + (WORKFLOW if pref('learn', True) else '') + (JOPLIN_TOOLS if winctl and winctl._joplin_settings().get('api.token') else '')

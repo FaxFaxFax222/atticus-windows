@@ -68,12 +68,15 @@ static class Hooks
         int vk = (int)Prefs.Num("hotkeyCode"), mods = (int)Prefs.Num("hotkeyMods");
         if (k.vkCode == vk)
         {
+            // Held: every repeat and the release are ours, even after a modifier came up first. Otherwise the repeats reach
+            // Windows as Win+Space (the keyboard-language switcher) or Alt+Space (the window menu), flashing on and off.
+            if (down) { if (up) { down = false; Shortcut?.Invoke(false); } return 1; }
             if (press && Mods() == mods)
             {
-                if (!down) { down = true; if ((mods & 1) != 0 || (mods & 8) != 0) Tap(0xE8); Shortcut?.Invoke(true); }   // 0xE8: Alt/Win alone would open a menu
-                return 1;   // swallowed, key repeat too
+                down = true; if ((mods & 1) != 0 || (mods & 8) != 0) Tap(0xE8);   // 0xE8: Alt/Win alone would open a menu
+                Shortcut?.Invoke(true);
+                return 1;
             }
-            if (up && down) { down = false; Shortcut?.Invoke(false); return 1; }
         }
         if (press && k.vkCode == VK_ESCAPE && Mods() == 0 && EscWanted?.Invoke() == true) { Escape?.Invoke(); return 1; }
         return CallNextHookEx(kb, code, w, l);
